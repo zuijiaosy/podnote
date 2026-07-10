@@ -59,6 +59,19 @@ export async function summarize({ meta, timedText }) {
     .replaceAll("{{shownotes}}", meta.shownotes || "(无)")
     .replaceAll("{{transcript}}", timedText);
 
+  // LLM 输出偶发噪声 token 或临时失败,自动重试一次
+  const MAX_TRIES = 2;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await runOnce(prompt);
+    } catch (e) {
+      if (attempt >= MAX_TRIES) throw e;
+      console.error(`\n[summarize] 第 ${attempt} 次失败(${e.message}),重试中...`);
+    }
+  }
+}
+
+async function runOnce(prompt) {
   const agent = new Agent({
     initialState: {
       systemPrompt:
