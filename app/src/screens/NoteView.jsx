@@ -68,8 +68,8 @@ function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate }) {
             <Button variant="ghost" size="sm" onClick={() => onToggleTts?.()}>{ttsLabel}</Button>
           </>
         )}
-        <Button variant="ghost" size="sm" onClick={() => onToggleRead?.()}>
-          {ep.readAt ? "已归档 · 撤销" : "归档 E"}
+        <Button variant="ghost" size="sm" title="快捷键 E" onClick={() => onToggleRead?.()}>
+          {ep.readAt ? "已归档 · 撤销" : "归档"}
         </Button>
         <span style={{
           fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",

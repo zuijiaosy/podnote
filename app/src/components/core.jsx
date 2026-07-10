@@ -36,7 +36,9 @@ export function Button({ variant = "secondary", size = "md", children, style, ..
     ghost: {
       padding: pad, borderRadius: "var(--radius)",
       background: hover ? "var(--fill-hover)" : "transparent",
-      color: "var(--scale)", border: "1px solid transparent",
+      color: hover ? "var(--ink)" : "var(--scale)",
+      // 可见边框:纯文字按钮与静态标签必须能一眼区分
+      border: "1px solid var(--line-soft)",
     },
   };
   return (
