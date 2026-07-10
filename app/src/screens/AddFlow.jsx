@@ -42,7 +42,7 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
             />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 16, marginTop: 8 }}>
               <span style={{
-                fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+                fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
                 letterSpacing: "var(--tracking-machine)", color: "var(--scale)",
               }}>链接直传云端转写</span>
               <Button variant="knob" size="md" onClick={onStart} aria-label="开始处理">开始</Button>
@@ -58,7 +58,7 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
                   <IndicatorLight status={st.status} label={st.label} />
                   <span style={{ flex: 1 }} />
                   <span style={{
-                    fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+                    fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
                     letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
                     color: "var(--scale)",
                   }}>{st.meta || ""}</span>

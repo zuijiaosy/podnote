@@ -27,7 +27,7 @@ export function Transcript({ sentences, speakers, playSec, onSeekSec }) {
     return (
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={{
-          fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+          fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
           letterSpacing: "var(--tracking-machine-wide)", color: "var(--scale)",
         }}>加载中…</span>
       </div>
@@ -41,12 +41,12 @@ export function Transcript({ sentences, speakers, playSec, onSeekSec }) {
           onClick={() => setFollow(true)}
           style={{
             position: "absolute", top: 8, right: 24, zIndex: 2,
-            fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+            fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
             fontWeight: "var(--weight-medium)",
             letterSpacing: "var(--tracking-machine)", textTransform: "uppercase",
             background: "var(--ink)", color: "var(--panel)",
             border: "none", borderRadius: "var(--radius-sm)",
-            padding: "4px 10px", cursor: "pointer",
+            padding: "6px 12px", cursor: "pointer",
           }}
         >◉ 跟随播放</button>
       )}
@@ -73,11 +73,11 @@ export function Transcript({ sentences, speakers, playSec, onSeekSec }) {
                 <span style={{
                   fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
                   letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
-                  color: current ? "var(--signal)" : "var(--scale)", flex: "none", width: 48,
+                  color: current ? "var(--signal)" : "var(--scale)", flex: "none", width: 56,
                 }}>{fmtSec(s.t)}</span>
                 <span style={{
                   fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)",
-                  color: "var(--scale)", flex: "none", width: 48,
+                  color: "var(--scale)", flex: "none", width: 56,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>{speakers?.[s.spk] ?? s.spk ?? ""}</span>
                 <span style={{

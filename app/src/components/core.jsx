@@ -5,11 +5,12 @@ import { useState } from "react";
 export function Button({ variant = "secondary", size = "md", children, style, ...rest }) {
   const [hover, setHover] = useState(false);
   const [down, setDown] = useState(false);
-  const pad = { sm: "4px 12px", md: "8px 16px", lg: "12px 24px" }[size];
+  const pad = { sm: "6px 12px", md: "9px 16px", lg: "13px 24px" }[size];
   const dia = { sm: 48, md: 64, lg: 88 }[size];
   const base = {
     fontFamily: "var(--font-mono)",
-    fontSize: size === "sm" ? "var(--text-xs)" : "var(--text-sm)",
+    /* 按钮文字统一 sm(13px):中文在 xs 档不可读;尺寸差异交给内边距 */
+    fontSize: "var(--text-sm)",
     fontWeight: "var(--weight-medium)",
     letterSpacing: "var(--tracking-machine)",
     textTransform: "uppercase",

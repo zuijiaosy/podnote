@@ -27,8 +27,10 @@
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   --font-sans: -apple-system, 'PingFang SC', 'Source Han Sans SC', 'Noto Sans SC', sans-serif;
 
-  /* 字号五档,刻度外禁用 */
-  --text-xs: 10px; --text-sm: 12px; --text-base: 14px; --text-lg: 16px; --text-xl: 20px;
+  /* 字号五档,刻度外禁用
+     修宪(桌面App实测):原刻度 10/12/14/16/20 整体偏小,全刻度上移;
+     xs 仅限纯 ASCII 丝印与数字,承载中文的标签最低用 sm */
+  --text-xs: 11px; --text-sm: 13px; --text-base: 15px; --text-lg: 17px; --text-xl: 22px;
 
   /* 字重两档 */
   --weight-regular: 400; --weight-medium: 500;
