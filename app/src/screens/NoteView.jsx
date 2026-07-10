@@ -31,7 +31,7 @@ function SectionHead({ idx, title }) {
   );
 }
 
-function Console({ ep }) {
+function Console({ ep, onToggleRead }) {
   const statusLabel = ep.statusLabel
     || { ready: "READY", processing: "WORKING", error: "ERROR", off: "QUEUED" }[ep.status];
   return (
@@ -55,6 +55,9 @@ function Console({ ep }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <IndicatorLight status={ep.status} label={statusLabel} />
         <span style={{ flex: 1 }} />
+        <Button variant="ghost" size="sm" onClick={() => onToggleRead?.()}>
+          {ep.readAt ? "已归档 · 撤销" : "归档 E"}
+        </Button>
         <span style={{
           fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
           letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums", color: "var(--scale)",
@@ -333,11 +336,11 @@ const Hint = ({ children, ink }) => (
   }}>{children}</div>
 );
 
-export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onRetry, onGoSettings }) {
+export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, onRetry, onGoSettings }) {
   if (!ep) return null;
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-      <Console ep={ep} />
+      <Console ep={ep} onToggleRead={onToggleRead} />
       {ep.status === "ready" && ep.note ? (
         <>
           <ReaderTabs

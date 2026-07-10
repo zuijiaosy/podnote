@@ -13,6 +13,8 @@ export const api = {
   retry: (id) => invoke("retry_episode", { id }),
   regenerate: (id) => invoke("regenerate_note", { id }),
   deleteEpisode: (id) => invoke("delete_episode", { id }),
+  /** 归档/取消归档(消费状态) */
+  setRead: (id, read) => invoke("set_read", { id, read }),
   revealNote: (id) => invoke("reveal_note", { id }),
   getAudioPath: (id) => invoke("get_audio_path", { id }),
   downloadAudio: (id) => invoke("download_audio", { id }),

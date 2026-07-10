@@ -25,6 +25,9 @@ pub struct EpisodeRecord {
     pub err_stage: Option<String>,
     #[serde(default)]
     pub err_message: Option<String>,
+    /// 消费状态(与管线状态正交):归档时刻的 epoch 秒;None = 未读
+    #[serde(default)]
+    pub read_at: Option<u64>,
 }
 
 pub struct Library {
@@ -167,7 +170,7 @@ mod tests {
             id: "abc12345".into(), url: "https://x".into(),
             show: "S".into(), title: "T".into(), date: "07-10".into(),
             duration_sec: 100, status: "queued".into(),
-            err_stage: None, err_message: None,
+            err_stage: None, err_message: None, read_at: None,
         };
         lib.upsert(rec.clone()).unwrap();
         assert_eq!(lib.list().len(), 1);

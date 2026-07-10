@@ -19,6 +19,8 @@ function LiveApp() {
   const [settingsView, setSettingsView] = useState(null);
   const [view, setView] = useState("notes");
   const [activeId, setActiveId] = useState(null);
+  const [filterShow, setFilterShow] = useState(null); // null = 全部频道
+  const [showArchived, setShowArchived] = useState(false); // false = 未读收件箱
   const [adding, setAdding] = useState(false);
   const [addAct, setAddAct] = useState("input");
   const [addUrl, setAddUrl] = useState("");
@@ -109,12 +111,54 @@ function LiveApp() {
           elapsed: activeStage ? st[activeStage]?.detail || null : null,
           errStage: r.errStage,
           errReason: r.errMessage,
+          readAt: r.readAt ?? null,
           note,
         };
       }),
     [records, stageMap, notes]
   );
   const ep = episodes.find((e) => e.id === activeId) ?? null;
+
+  // ===== 收件箱视图:默认只看未读,频道条筛选,已归档单独一屉 =====
+  const matchView = useCallback(
+    (e, archived, show) => (archived ? !!e.readAt : !e.readAt) && (!show || e.show === show),
+    []
+  );
+  const visible = useMemo(
+    () => episodes.filter((e) => matchView(e, showArchived, filterShow)),
+    [episodes, showArchived, filterShow, matchView]
+  );
+  const shows = useMemo(() => {
+    const m = new Map();
+    for (const e of episodes) {
+      const s = m.get(e.show) ?? { name: e.show, unread: 0 };
+      if (!e.readAt) s.unread += 1;
+      m.set(e.show, s);
+    }
+    return [...m.values()];
+  }, [episodes]);
+  const archivedCount = useMemo(() => episodes.filter((e) => e.readAt).length, [episodes]);
+
+  /** 切筛选后当前选中不在视图里时,跳到视图第一条 */
+  const reselectFor = (archived, show) => {
+    const v = episodes.filter((e) => matchView(e, archived, show));
+    if (v.length && !v.some((x) => x.id === activeId)) setActiveId(v[0].id);
+  };
+  const applyFilter = (name) => { setFilterShow(name); reselectFor(showArchived, name); };
+  const toggleArchivedView = () => { setShowArchived(!showArchived); reselectFor(!showArchived, filterShow); };
+
+  /** 归档/撤销归档当前单集;归档后自动选中未读视图的下一条 */
+  const toggleRead = async () => {
+    if (!ep) return;
+    const archiving = !ep.readAt;
+    const idx = visible.findIndex((e) => e.id === ep.id);
+    await api.setRead(ep.id, archiving);
+    await refresh();
+    if (archiving && !showArchived && idx >= 0) {
+      const next = visible[idx + 1] ?? visible[idx - 1];
+      if (next) setActiveId(next.id);
+    }
+  };
 
   // ===== 真实播放引擎:<audio> + asset 协议 + Web Audio 波形峰值 =====
   const registerAudio = useCallback(async (id, path) => {
@@ -174,17 +218,20 @@ function LiveApp() {
       .catch((e) => console.error("播放失败", e));
   };
 
-  // 回车/空格 = 播放/暂停(窗口激活、不在输入框/按钮/弹窗/设置页时)
+  // 回车/空格 = 播放/暂停,E = 归档(窗口激活、不在输入框/按钮/弹窗/设置页时)
   const togglePlayRef = useRef(() => {});
   useEffect(() => { togglePlayRef.current = togglePlay; });
+  const toggleReadRef = useRef(() => {});
+  useEffect(() => { toggleReadRef.current = toggleRead; });
   useEffect(() => {
     if (adding || view !== "notes") return;
     const onKey = (e) => {
-      if (e.key !== "Enter" && e.key !== " ") return;
+      if (e.key !== "Enter" && e.key !== " " && e.key !== "e" && e.key !== "E") return;
       const t = e.target;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "BUTTON" || t.isContentEditable)) return;
       e.preventDefault(); // 空格默认滚动页面
-      togglePlayRef.current();
+      if (e.key === "e" || e.key === "E") toggleReadRef.current();
+      else togglePlayRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -287,7 +334,13 @@ function LiveApp() {
       ) : (
         <>
           <Rack
-            episodes={episodes}
+            episodes={visible}
+            shows={shows}
+            filterShow={filterShow}
+            onFilterShow={applyFilter}
+            archivedCount={archivedCount}
+            showArchived={showArchived}
+            onToggleArchived={toggleArchivedView}
             activeId={activeId}
             onSelect={(id) => {
               audioRef.current?.pause();
@@ -323,6 +376,7 @@ function LiveApp() {
               onTogglePlay={togglePlay}
               onSeekFrac={seekFrac}
               onCycleSpeed={cycleSpeed}
+              onToggleRead={toggleRead}
               onRetry={() => ep && api.retry(ep.id)}
               onGoSettings={() => setView("settings")}
             />

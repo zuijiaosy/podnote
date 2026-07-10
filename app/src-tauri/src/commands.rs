@@ -203,6 +203,24 @@ pub fn delete_episode(state: State<AppState>, id: String) -> Result<(), String> 
     state.lib.lock().unwrap().remove(&id).map_err(|e| e.to_string())
 }
 
+/// 归档/取消归档(消费状态,与管线状态正交)
+#[tauri::command]
+pub fn set_read(state: State<AppState>, id: String, read: bool) -> Result<(), String> {
+    let ts = read.then(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    });
+    state
+        .lib
+        .lock()
+        .unwrap()
+        .update(&id, |r| r.read_at = ts)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn reveal_note(state: State<AppState>, id: String) -> Result<(), String> {
     let path = state.lib.lock().unwrap().note_md_path(&id);
@@ -322,6 +340,7 @@ pub fn add_episode(app: AppHandle, state: State<AppState>, url: String) -> Resul
         status: "queued".into(),
         err_stage: None,
         err_message: None,
+        read_at: None,
     };
     state.lib.lock().unwrap().upsert(rec.clone()).map_err(|e| e.to_string())?;
     tauri::async_runtime::spawn(run_pipeline(app, id, false));
@@ -655,6 +674,7 @@ async fn do_check_subscriptions(app: &AppHandle) -> Result<u32, String> {
                 status: "queued".into(),
                 err_stage: None,
                 err_message: None,
+                read_at: None,
             };
             {
                 let state = app.state::<AppState>();
