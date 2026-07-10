@@ -87,6 +87,7 @@ export async function summarize({ meta, srt }) {
   });
 
   let out = "";
+  let errMsg = null;
   agent.subscribe((event) => {
     if (
       event.type === "message_update" &&
@@ -95,9 +96,17 @@ export async function summarize({ meta, srt }) {
       out += event.assistantMessageEvent.delta;
       process.stdout.write(event.assistantMessageEvent.delta);
     }
+    // LLM 请求失败不抛异常,而是以 stopReason=error 的最终消息结束——不能吞掉
+    if (event.type === "message_end" && event.message?.stopReason === "error") {
+      errMsg = event.message.errorMessage || "未知错误";
+    }
   });
 
   await agent.prompt(prompt);
   process.stdout.write("\n");
+  if (errMsg) throw new Error(`LLM 请求失败: ${errMsg}`);
+  if (!out.trim()) {
+    throw new Error("LLM 没有返回任何内容——检查网关地址、模型名和 key 是否正确");
+  }
   return parseNote(out); // 解析失败会抛错,error.raw 带着原始输出
 }
