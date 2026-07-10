@@ -1,7 +1,8 @@
 // note.mjs — 笔记数据结构:解析 LLM 输出的 JSON + 渲染成 Markdown
 // schema 与设计稿(Podnote 正式设计 standalone.html)的 view-model 对齐:
-// { tldr, points:[{t,ts,h,body}], quotes:[{t,ts,text}], resources:[{name,note}], questions:[] }
-// t(秒)由 ts 解析而来,波形锚点 = t / durationSec
+// { speakers:{S1:名}, tldr, points:[{t,ts,who,h,body}], quotes:[{t,ts,who,text}],
+//   resources:[{name,note}], questions:[] }
+// t(秒)由 ts 解析而来,波形锚点 = t / durationSec;who 来自说话人分离+开场映射
 
 const REQUIRED = ["tldr", "points", "quotes", "resources", "questions"];
 
@@ -39,11 +40,11 @@ export function noteToMarkdown(meta, note) {
   L.push(`> ${note.tldr}`, "");
   L.push("## 核心观点", "");
   for (const p of note.points) {
-    L.push(`### ${p.h} (${p.ts})`, "", p.body, "");
+    L.push(`### ${p.h}${p.who ? ` · ${p.who}` : ""} (${p.ts})`, "", p.body, "");
   }
   L.push("## 值得记住的话", "");
   for (const q of note.quotes) {
-    L.push(`> 「${q.text}」(${q.ts})`, "");
+    L.push(`> 「${q.text}」${q.who ? `—— ${q.who} ` : ""}(${q.ts})`, "");
   }
   L.push("## 提到的资源", "");
   L.push(

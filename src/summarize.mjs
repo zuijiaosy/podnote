@@ -47,30 +47,12 @@ const promptTemplate = readFileSync(
   "utf8"
 );
 
-// srt 太啰嗦,压缩成 [mm:ss] 文本行,省 token
-export function srtToTimedText(srt) {
-  const lines = [];
-  const blocks = srt.split(/\n\n+/);
-  for (const block of blocks) {
-    const m = block.match(
-      /(\d{2}):(\d{2}):(\d{2}),\d{3}\s*-->[\s\S]*?\n([\s\S]+)/
-    );
-    if (!m) continue;
-    const [, h, mm, ss, text] = m;
-    const t =
-      h === "00" ? `${mm}:${ss}` : `${Number(h) * 60 + Number(mm)}:${ss}`;
-    lines.push(`[${t}] ${text.replace(/\n/g, " ").trim()}`);
-  }
-  return lines.join("\n");
-}
-
-export async function summarize({ meta, srt }) {
+export async function summarize({ meta, timedText }) {
   if (!API_KEY) {
     throw new Error(
       "缺少 API key:请设置 PI_API_KEY(或 OPENAI_API_KEY / ANTHROPIC_API_KEY)"
     );
   }
-  const timedText = srtToTimedText(srt);
   const prompt = promptTemplate
     .replaceAll("{{title}}", meta.title)
     .replaceAll("{{podcast}}", meta.podcast)
