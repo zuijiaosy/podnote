@@ -158,16 +158,22 @@ function Reader({ ep, playFrac, onSeekFrac }) {
   );
 }
 
-function Player({ ep, playFrac, playing, speed, onTogglePlay, onSeekFrac, onCycleSpeed, bars }) {
+function Player({ ep, playFrac, playing, speed, downloadPct, onTogglePlay, onSeekFrac, onCycleSpeed, bars }) {
   const anchors = ep.note ? ep.note.points.map((p) => p.t / ep.durationSec) : [];
+  const downloading = downloadPct != null;
   return (
     <div style={{
       flex: "none", background: "var(--well)", borderRadius: "var(--radius)",
       padding: "16px 24px", boxSizing: "border-box",
       display: "flex", alignItems: "center", gap: 16,
     }}>
-      <Button variant="secondary" size="sm" onClick={onTogglePlay} style={{ flex: "none", width: 64 }}>
-        {playing ? "PAUSE" : "PLAY"}
+      <Button
+        variant="secondary" size="sm"
+        onClick={downloading ? undefined : onTogglePlay}
+        style={{ flex: "none", width: 64, opacity: downloading ? 0.7 : 1 }}
+        aria-label={downloading ? "音频下载中" : playing ? "暂停" : "播放"}
+      >
+        {downloading ? `${downloadPct}%` : playing ? "PAUSE" : "PLAY"}
       </Button>
       <span style={{
         fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
@@ -240,7 +246,7 @@ const Hint = ({ children, ink }) => (
   }}>{children}</div>
 );
 
-export function NoteView({ ep, playFrac, playing, speed, bars, onTogglePlay, onSeekFrac, onCycleSpeed, onRetry, onGoSettings }) {
+export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, onTogglePlay, onSeekFrac, onCycleSpeed, onRetry, onGoSettings }) {
   if (!ep) return null;
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -249,7 +255,7 @@ export function NoteView({ ep, playFrac, playing, speed, bars, onTogglePlay, onS
         <>
           <Reader ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} />
           <Player
-            ep={ep} playFrac={playFrac} playing={playing} speed={speed} bars={bars}
+            ep={ep} playFrac={playFrac} playing={playing} speed={speed} bars={bars} downloadPct={downloadPct}
             onTogglePlay={onTogglePlay} onSeekFrac={onSeekFrac} onCycleSpeed={onCycleSpeed}
           />
         </>

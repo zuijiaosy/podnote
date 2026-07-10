@@ -13,11 +13,15 @@ export const api = {
   regenerate: (id) => invoke("regenerate_note", { id }),
   deleteEpisode: (id) => invoke("delete_episode", { id }),
   revealNote: (id) => invoke("reveal_note", { id }),
+  getAudioPath: (id) => invoke("get_audio_path", { id }),
+  downloadAudio: (id) => invoke("download_audio", { id }),
   getSettings: () => invoke("get_settings"),
   setSettings: (settings) => invoke("set_settings", { settings }),
   setKeys: (asrKey, llmKey) => invoke("set_keys", { asrKey: asrKey ?? null, llmKey: llmKey ?? null }),
   /** 订阅管线进度;返回取消函数 */
   onProgress: (cb) => listen("pipeline-progress", (e) => cb(e.payload)),
+  /** 订阅音频下载进度 {id, pct} */
+  onAudioProgress: (cb) => listen("audio-progress", (e) => cb(e.payload)),
 };
 
 /** 后端状态 → 组件四态 */

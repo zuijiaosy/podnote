@@ -51,8 +51,17 @@ impl Library {
     pub fn note_md_path(&self, id: &str) -> PathBuf {
         self.root.join("notes").join(format!("{id}.md"))
     }
-    pub fn audio_path(&self, id: &str) -> PathBuf {
-        self.root.join("audio").join(format!("{id}.m4a"))
+    /// 音频文件保留原始扩展名(m4a/mp3),按 id 前缀查找
+    pub fn audio_file(&self, id: &str, ext: &str) -> PathBuf {
+        self.root.join("audio").join(format!("{id}.{ext}"))
+    }
+    pub fn find_audio(&self, id: &str) -> Option<PathBuf> {
+        let dir = self.root.join("audio");
+        let prefix = format!("{id}.");
+        fs::read_dir(dir).ok()?.flatten().find_map(|e| {
+            let p = e.path();
+            p.file_name()?.to_str()?.starts_with(&prefix).then_some(p)
+        })
     }
 
     pub fn list(&self) -> Vec<EpisodeRecord> {
@@ -95,9 +104,13 @@ impl Library {
     pub fn remove(&self, id: &str) -> Result<()> {
         let eps: Vec<_> = self.list().into_iter().filter(|e| e.id != id).collect();
         self.save_all(&eps)?;
-        for p in [self.asr_path(id), self.note_json_path(id), self.note_md_path(id), self.audio_path(id)] {
+        for p in [self.asr_path(id), self.note_json_path(id), self.note_md_path(id)] {
             let _ = fs::remove_file(p);
         }
+        if let Some(p) = self.find_audio(id) {
+            let _ = fs::remove_file(p);
+        }
+        let _ = fs::remove_file(self.root.join("meta").join(format!("{id}.json")));
         Ok(())
     }
 }

@@ -140,6 +140,85 @@ pub fn reveal_note(state: State<AppState>, id: String) -> Result<(), String> {
     tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
 }
 
+/// 已下载音频的本地路径(未下载返回 None)
+#[tauri::command]
+pub fn get_audio_path(state: State<AppState>, id: String) -> Option<String> {
+    state
+        .lib
+        .lock()
+        .unwrap()
+        .find_audio(&id)
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+/// 下载音频到 app 数据目录(播放器用),进度经 "audio-progress" 事件推送
+#[tauri::command]
+pub async fn download_audio(app: AppHandle, id: String) -> Result<String, String> {
+    let (client, meta_path, existing, lib_root) = {
+        let state = app.state::<AppState>();
+        let lib = state.lib.lock().unwrap();
+        (
+            state.client.clone(),
+            lib.root.join("meta").join(format!("{id}.json")),
+            lib.find_audio(&id),
+            lib.root.clone(),
+        )
+    };
+    if let Some(p) = existing {
+        return Ok(p.to_string_lossy().into_owned());
+    }
+    let meta: resolve::EpisodeMeta = fs::read_to_string(&meta_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .ok_or("找不到剧集元信息,请先重试解析")?;
+
+    let ext = meta
+        .audio_url
+        .split('?')
+        .next()
+        .and_then(|p| p.rsplit('.').next())
+        .filter(|e| ["m4a", "mp3", "aac", "wav"].contains(e))
+        .unwrap_or("m4a")
+        .to_string();
+    let dest = lib_root.join("audio").join(format!("{id}.{ext}"));
+    let tmp = lib_root.join("audio").join(format!("{id}.{ext}.part"));
+
+    let res = client
+        .get(&meta.audio_url)
+        .send()
+        .await
+        .map_err(|e| format!("音频下载失败: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("音频下载被拒: {e}"))?;
+    let total = res.content_length().unwrap_or(0);
+
+    use futures_util::StreamExt;
+    use std::io::Write;
+    let mut file = fs::File::create(&tmp).map_err(|e| e.to_string())?;
+    let mut stream = res.bytes_stream();
+    let mut got: u64 = 0;
+    let mut last_pct: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("音频下载中断: {e}"))?;
+        file.write_all(&chunk).map_err(|e| e.to_string())?;
+        got += chunk.len() as u64;
+        if total > 0 {
+            let pct = got * 100 / total;
+            if pct != last_pct {
+                last_pct = pct;
+                let _ = app.emit(
+                    "audio-progress",
+                    serde_json::json!({ "id": id, "pct": pct }),
+                );
+            }
+        }
+    }
+    drop(file);
+    fs::rename(&tmp, &dest).map_err(|e| e.to_string())?;
+    let _ = app.emit("audio-progress", serde_json::json!({ "id": id, "pct": 100 }));
+    Ok(dest.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 pub fn add_episode(app: AppHandle, state: State<AppState>, url: String) -> Result<EpisodeRecord, String> {
     let id = episode_id(&url).ok_or("这不是有效的小宇宙单集链接")?;

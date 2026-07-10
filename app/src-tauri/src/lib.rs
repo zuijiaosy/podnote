@@ -28,6 +28,8 @@ pub fn run() {
             commands::regenerate_note,
             commands::delete_episode,
             commands::reveal_note,
+            commands::get_audio_path,
+            commands::download_audio,
             commands::get_settings,
             commands::set_settings,
             commands::set_keys,

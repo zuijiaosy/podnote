@@ -7,6 +7,7 @@ import { AddFlow } from "./screens/AddFlow.jsx";
 import { Settings } from "./screens/Settings.jsx";
 import { DemoApp } from "./screens/DemoApp.jsx";
 import { inTauri, api, uiStatus, uiStatusLabel } from "./lib/backend.js";
+import { extractPeaks } from "./lib/audio.js";
 import { fmt } from "./lib/format.js";
 
 const STAGE_ORDER = ["RESOLVE", "TRANSCRIBE", "SUMMARIZE", "READY"];
@@ -26,6 +27,9 @@ function LiveApp() {
   const [playFrac, setPlayFrac] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [audioInfo, setAudioInfo] = useState({}); // id -> {url, peaks}
+  const [dlPct, setDlPct] = useState(null);
+  const audioRef = useRef(null);
 
   const refresh = useCallback(async () => {
     const recs = await api.getLibrary();
@@ -100,19 +104,76 @@ function LiveApp() {
   );
   const ep = episodes.find((e) => e.id === activeId) ?? null;
 
-  // 播放模拟(P3 换 <audio> 真实播放)
-  const tick = useRef(null);
+  // ===== 真实播放引擎:<audio> + asset 协议 + Web Audio 波形峰值 =====
+  const registerAudio = useCallback(async (id, path) => {
+    const { convertFileSrc } = await import("@tauri-apps/api/core");
+    const url = convertFileSrc(path);
+    setAudioInfo((m) => ({ ...m, [id]: { url, peaks: m[id]?.peaks ?? null } }));
+    extractPeaks(url)
+      .then((peaks) => setAudioInfo((m) => ({ ...m, [id]: { ...(m[id] ?? { url }), peaks } })))
+      .catch(() => {}); // 解码失败只影响波形观感,不影响播放
+    return url;
+  }, []);
+
+  // 选中已完成剧集时:已下载过的音频直接注册(波形/秒播就绪)
   useEffect(() => {
-    if (!playing || !ep?.durationSec) return;
-    tick.current = setInterval(() => {
-      setPlayFrac((f) => {
-        const next = f + (0.5 * speed) / ep.durationSec;
-        if (next >= 1) { setPlaying(false); return 1; }
-        return next;
-      });
-    }, 500);
-    return () => clearInterval(tick.current);
-  }, [playing, speed, ep?.id, ep?.durationSec]);
+    if (!activeId || audioInfo[activeId]) return;
+    const r = records.find((x) => x.id === activeId);
+    if (r?.status !== "ready") return;
+    api.getAudioPath(activeId).then((p) => { if (p) registerAudio(activeId, p); });
+  }, [activeId, records, audioInfo, registerAudio]);
+
+  // 音频下载进度 → PLAY 按钮百分比
+  const activeIdRef = useRef(null);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+  useEffect(() => {
+    let un;
+    api.onAudioProgress((p) => {
+      if (p.id === activeIdRef.current) setDlPct(p.pct);
+    }).then((u) => (un = u));
+    return () => un?.();
+  }, []);
+
+  const togglePlay = async () => {
+    const a = audioRef.current;
+    if (!ep || !a) return;
+    if (playing) { a.pause(); return; }
+    let info = audioInfo[ep.id];
+    if (!info) {
+      // 首次播放:先把音频拉到本地
+      setDlPct(0);
+      try {
+        const path = await api.downloadAudio(ep.id);
+        info = { url: await registerAudio(ep.id, path) };
+      } catch (e) {
+        console.error("音频下载失败", e);
+        return;
+      } finally {
+        setDlPct(null);
+      }
+    }
+    if (a.dataset.epid !== ep.id) {
+      a.src = info.url;
+      a.dataset.epid = ep.id;
+      a.currentTime = playFrac * ep.durationSec;
+    }
+    a.playbackRate = speed;
+    a.play().catch((e) => console.error("播放失败", e));
+  };
+
+  const seekFrac = (f) => {
+    setPlayFrac(f);
+    const a = audioRef.current;
+    if (a && ep && a.dataset.epid === ep.id && Number.isFinite(a.duration)) {
+      a.currentTime = f * a.duration;
+    }
+  };
+
+  const cycleSpeed = () => {
+    const next = { 1: 1.5, 1.5: 2, 2: 1 }[speed];
+    setSpeed(next);
+    if (audioRef.current) audioRef.current.playbackRate = next;
+  };
 
   const addStages = useMemo(() => {
     const st = stageMap[addingIdRef.current] ?? {};
@@ -181,7 +242,12 @@ function LiveApp() {
           <Rack
             episodes={episodes}
             activeId={activeId}
-            onSelect={(id) => { setActiveId(id); setPlaying(false); setPlayFrac(0); }}
+            onSelect={(id) => {
+              audioRef.current?.pause();
+              setActiveId(id);
+              setPlayFrac(0);
+              setDlPct(null);
+            }}
             onAdd={() => { setAdding(true); setAddAct("input"); setAddErr(""); }}
             onSettings={() => setView("settings")}
           />
@@ -198,15 +264,30 @@ function LiveApp() {
             <NoteView
               ep={ep}
               playFrac={playFrac} playing={playing} speed={speed}
-              onTogglePlay={() => setPlaying((p) => !p)}
-              onSeekFrac={setPlayFrac}
-              onCycleSpeed={() => setSpeed((v) => ({ 1: 1.5, 1.5: 2, 2: 1 }[v]))}
+              bars={audioInfo[ep?.id]?.peaks ?? null}
+              downloadPct={dlPct}
+              onTogglePlay={togglePlay}
+              onSeekFrac={seekFrac}
+              onCycleSpeed={cycleSpeed}
               onRetry={() => ep && api.retry(ep.id)}
               onGoSettings={() => setView("settings")}
             />
           )}
         </>
       )}
+      <audio
+        ref={audioRef}
+        style={{ display: "none" }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        onTimeUpdate={(e) => {
+          const a = e.currentTarget;
+          if (Number.isFinite(a.duration) && a.duration > 0) {
+            setPlayFrac(a.currentTime / a.duration);
+          }
+        }}
+      />
       {adding && (
         <AddFlow
           act={addAct} stages={addStages} url={addUrl} errMessage={addErr}
