@@ -2,12 +2,15 @@
 // 事件: "pipeline-progress" { id, stage, status, detail } — AddFlow 五灯与磁带架同源消费
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_notification::NotificationExt;
 
 use crate::library::{ensure_dir, episode_id, short_date, EpisodeRecord, Library};
 use crate::pipeline::{asr, note, resolve, summarize};
+use crate::subscriptions::{pick_new, SubStore, Subscription};
 
 pub struct AppState {
     pub lib: Mutex<Library>,
@@ -15,6 +18,8 @@ pub struct AppState {
     /// (asr_key, llm_key) 内存缓存:启动时读一次,运行期零钥匙串访问
     /// (钥匙串弹窗会阻塞主线程;dev 构建每次重编译签名变化还会反复弹窗)
     pub keys: Mutex<(String, String)>,
+    /// 订阅检查进行中(定时轮询与手动检查互斥,防重复入库)
+    pub checking_subs: AtomicBool,
 }
 
 // ===== 设置(非敏感项存 settings.json;key 存 macOS 钥匙串) =====
@@ -27,6 +32,8 @@ pub struct Settings {
     pub llm_model: String,
     /// 额外导出目录(如个人笔记库);None 则只写 app 数据目录
     pub notes_dir: Option<String>,
+    /// 订阅自动处理总开关:开着才定时轮询
+    pub sub_auto: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -35,6 +42,7 @@ impl Default for Settings {
             llm_base_url: "https://api.codexzh.com/v1".into(),
             llm_model: "grok-4.5".into(),
             notes_dir: None,
+            sub_auto: true,
         }
     }
 }
@@ -546,4 +554,157 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
         }
     }
     emit(&app, &id, "READY", "ready", "");
+}
+
+// ===== 订阅:节目更新自动转写 =====
+// 事件: "subscriptions-changed" — 订阅表或自动入库有变化,前端刷新库与订阅列表
+
+fn sub_store(app: &AppHandle) -> SubStore {
+    let state = app.state::<AppState>();
+    let root = state.lib.lock().unwrap().root.clone();
+    SubStore { root }
+}
+
+#[tauri::command]
+pub fn get_subscriptions(state: State<AppState>) -> Vec<Subscription> {
+    let root = state.lib.lock().unwrap().root.clone();
+    SubStore { root }.list()
+}
+
+/// 接受节目页或单集页链接;单集链接先抓页面反查所属节目
+#[tauri::command]
+pub async fn add_subscription(app: AppHandle, url: String) -> Result<Subscription, String> {
+    let client = app.state::<AppState>().client.clone();
+    let pid = if let Some(pid) = resolve::podcast_pid_from_url(&url) {
+        pid
+    } else if episode_id(&url).is_some() && url.contains("/episode/") {
+        let html = resolve::fetch_html(&client, &url).await.map_err(|e| e.to_string())?;
+        resolve::podcast_pid_in_episode_html(&html)
+            .ok_or("没从单集页解析出节目 pid——小宇宙页面结构可能变了")?
+    } else {
+        return Err("请粘贴小宇宙节目页或单集页链接".into());
+    };
+    let feed = resolve::resolve_podcast(&client, &pid).await.map_err(|e| e.to_string())?;
+    // 基线 = 当前最新一集:订阅只管未来,不回灌旧集
+    let last_pub = feed
+        .episodes
+        .iter()
+        .map(|e| e.pub_date.clone())
+        .max()
+        .unwrap_or_default();
+    let sub = Subscription { pid: feed.pid, title: feed.title, last_pub };
+    sub_store(&app).upsert(sub.clone()).map_err(|e| e.to_string())?;
+    let _ = app.emit("subscriptions-changed", ());
+    Ok(sub)
+}
+
+#[tauri::command]
+pub fn remove_subscription(app: AppHandle, pid: String) -> Result<(), String> {
+    sub_store(&app).remove(&pid).map_err(|e| e.to_string())?;
+    let _ = app.emit("subscriptions-changed", ());
+    Ok(())
+}
+
+/// 手动"立即检查";返回新增单集数
+#[tauri::command]
+pub async fn check_subscriptions(app: AppHandle) -> Result<u32, String> {
+    check_all_subscriptions(&app).await
+}
+
+async fn check_all_subscriptions(app: &AppHandle) -> Result<u32, String> {
+    if app.state::<AppState>().checking_subs.swap(true, Ordering::SeqCst) {
+        return Err("上一轮检查还在进行中".into());
+    }
+    let result = do_check_subscriptions(app).await;
+    app.state::<AppState>().checking_subs.store(false, Ordering::SeqCst);
+    result
+}
+
+async fn do_check_subscriptions(app: &AppHandle) -> Result<u32, String> {
+    let client = app.state::<AppState>().client.clone();
+    let store = sub_store(app);
+    let mut added: u32 = 0;
+    let mut errs: Vec<String> = Vec::new();
+    for sub in store.list() {
+        let feed = match resolve::resolve_podcast(&client, &sub.pid).await {
+            Ok(f) => f,
+            Err(e) => {
+                errs.push(format!("{}: {}", sub.title, e));
+                continue;
+            }
+        };
+        let fresh = {
+            let state = app.state::<AppState>();
+            let lib = state.lib.lock().unwrap();
+            pick_new(&feed.episodes, &sub.last_pub, |eid| lib.get(eid).is_some())
+        };
+        // 无论管线成败都推进基线:失败的单集在架上手动重试,不反复重发
+        if let Some(max_pub) = feed.episodes.iter().map(|e| e.pub_date.as_str()).max() {
+            if max_pub > sub.last_pub.as_str() {
+                let _ = store.set_last_pub(&sub.pid, max_pub);
+            }
+        }
+        for e in fresh {
+            let rec = EpisodeRecord {
+                id: e.eid.clone(),
+                url: format!("https://www.xiaoyuzhoufm.com/episode/{}", e.eid),
+                show: feed.title.clone(),
+                title: e.title.clone(),
+                date: short_date(&e.pub_date),
+                duration_sec: e.duration.unwrap_or(0),
+                status: "queued".into(),
+                err_stage: None,
+                err_message: None,
+            };
+            {
+                let state = app.state::<AppState>();
+                let lib = state.lib.lock().unwrap();
+                if lib.upsert(rec).is_err() {
+                    continue;
+                }
+            }
+            let _ = app.emit("subscriptions-changed", ());
+            // 串行跑管线:转写有并发上限,也避免多集同时占用带宽
+            run_pipeline(app.clone(), e.eid.clone(), false).await;
+            added += 1;
+            let status = {
+                let state = app.state::<AppState>();
+                let lib = state.lib.lock().unwrap();
+                lib.get(&e.eid).map(|r| r.status)
+            };
+            let body = match status.as_deref() {
+                Some("ready") => format!("笔记已就绪:{}", e.title),
+                _ => format!("处理失败,可在磁带架重试:{}", e.title),
+            };
+            let _ = app
+                .notification()
+                .builder()
+                .title(format!("{} 更新了", feed.title))
+                .body(body)
+                .show();
+        }
+    }
+    let _ = app.emit("subscriptions-changed", ());
+    if added == 0 && !errs.is_empty() {
+        return Err(errs.join("\n"));
+    }
+    Ok(added)
+}
+
+/// 订阅轮询:启动 15 秒后查一次,此后每 30 分钟一次;设置里可关
+pub fn start_sub_poller(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(15)).await;
+        loop {
+            let auto = {
+                let state = app.state::<AppState>();
+                let lib = state.lib.lock().unwrap();
+                load_settings(&lib).sub_auto
+            };
+            if auto {
+                let _ = check_all_subscriptions(&app).await;
+            }
+            tokio::time::sleep(Duration::from_secs(30 * 60)).await;
+        }
+    });
 }

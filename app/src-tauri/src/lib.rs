@@ -1,7 +1,9 @@
 pub mod commands;
 pub mod library;
 pub mod pipeline;
+pub mod subscriptions;
 
+use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -10,6 +12,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let root = app.path().app_data_dir()?;
             let lib = library::Library::new(root)?;
@@ -18,7 +21,9 @@ pub fn run() {
                 lib: Mutex::new(lib),
                 client: reqwest::Client::new(),
                 keys: Mutex::new(keys),
+                checking_subs: AtomicBool::new(false),
             });
+            commands::start_sub_poller(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -36,6 +41,10 @@ pub fn run() {
             commands::get_settings,
             commands::set_settings,
             commands::set_keys,
+            commands::get_subscriptions,
+            commands::add_subscription,
+            commands::remove_subscription,
+            commands::check_subscriptions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -19,10 +19,17 @@ export const api = {
   getSettings: () => invoke("get_settings"),
   setSettings: (settings) => invoke("set_settings", { settings }),
   setKeys: (asrKey, llmKey) => invoke("set_keys", { asrKey: asrKey ?? null, llmKey: llmKey ?? null }),
+  getSubscriptions: () => invoke("get_subscriptions"),
+  addSubscription: (url) => invoke("add_subscription", { url }),
+  removeSubscription: (pid) => invoke("remove_subscription", { pid }),
+  /** 手动检查订阅更新;返回新增单集数 */
+  checkSubscriptions: () => invoke("check_subscriptions"),
   /** 订阅管线进度;返回取消函数 */
   onProgress: (cb) => listen("pipeline-progress", (e) => cb(e.payload)),
   /** 订阅音频下载进度 {id, pct} */
   onAudioProgress: (cb) => listen("audio-progress", (e) => cb(e.payload)),
+  /** 订阅表或自动入库有变化 */
+  onSubscriptionsChanged: (cb) => listen("subscriptions-changed", () => cb()),
 };
 
 /** 后端状态 → 组件四态 */

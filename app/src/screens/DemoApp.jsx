@@ -40,7 +40,8 @@ export function DemoApp() {
     }}>
       {view === "settings" ? (
         <Settings
-          view={{ llmModel: "grok-4.5", notesDir: "~/Documents/Podnote", asrKeySet: false, llmKeySet: false }}
+          view={{ llmModel: "grok-4.5", notesDir: "~/Documents/Podnote", asrKeySet: false, llmKeySet: false, subAuto: true }}
+          subs={[{ pid: "demo", title: "硬地骇客", lastPub: "2026-06-09T14:02:10.100Z" }]}
           onChangeField={() => {}}
           onSaveKeys={() => {}}
           onChooseDir={() => {}}

@@ -65,7 +65,81 @@ const DEFAULTS = {
   llmModel: "grok-4.5",
 };
 
-export function Settings({ view, onChangeField, onSaveKeys, onChooseDir, onBack }) {
+/** 订阅管理:节目列表 + 添加(节目/单集链接均可)+ 立即检查 */
+function Subscriptions({ subs, onAdd, onRemove, onCheck }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [checkMsg, setCheckMsg] = useState("");
+
+  const add = async () => {
+    const v = url.trim();
+    if (!v || busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await onAdd(v);
+      setUrl("");
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const check = async () => {
+    if (checking) return;
+    setChecking(true);
+    setCheckMsg("");
+    try {
+      const n = await onCheck();
+      setCheckMsg(n > 0 ? `发现 ${n} 集新单集,已自动处理` : "没有新单集");
+    } catch (e) {
+      setCheckMsg(String(e));
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <div style={{
+      background: "var(--well)", borderRadius: "var(--radius)",
+      padding: "8px 24px", boxSizing: "border-box", display: "flex", flexDirection: "column",
+    }}>
+      {subs.map((s) => (
+        <Row key={s.pid} title={s.title}
+          hint={s.lastPub ? `最新单集 ${s.lastPub.slice(0, 10)}` : "等待首次检查"}>
+          <Button variant="ghost" size="sm" onClick={() => onRemove(s.pid)}>移除</Button>
+        </Row>
+      ))}
+      <Row title="添加节目" hint={err || "粘贴小宇宙节目页或任意一集的链接"}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
+          <Input
+            value={url}
+            placeholder="https://www.xiaoyuzhoufm.com/…"
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+            style={{ width: 264 }}
+            aria-label="订阅链接"
+          />
+          <Button variant="secondary" size="sm" onClick={add} disabled={busy}>
+            {busy ? "添加中…" : "添加"}
+          </Button>
+        </div>
+      </Row>
+      <Row title="立即检查" hint={checkMsg || "不等定时轮询,现在就查一遍更新"} last>
+        <Button variant="secondary" size="sm" onClick={check} disabled={checking}>
+          {checking ? "检查中…" : "检查"}
+        </Button>
+      </Row>
+    </div>
+  );
+}
+
+export function Settings({
+  view, onChangeField, onSaveKeys, onChooseDir, onBack,
+  subs = [], onAddSub = async () => {}, onRemoveSub = () => {}, onCheckSubs = async () => 0,
+}) {
   return (
     <div style={{
       flex: 1, minWidth: 0, overflow: "auto",
@@ -112,13 +186,17 @@ export function Settings({ view, onChangeField, onSaveKeys, onChooseDir, onBack 
             </div>
           </Row>
           <Row
-            title={<><span>订阅自动处理</span><StatusLabel tone="dim">V2</StatusLabel></>}
-            hint="关注的节目更新后自动转写"
+            title="订阅自动处理"
+            hint="关注的节目更新后自动转写并生成笔记,每 30 分钟检查一次"
             last
           >
-            <Lever on={false} disabled />
+            <Lever on={!!view.subAuto} onChange={(on) => onChangeField({ subAuto: on })} />
           </Row>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16 }}>
+          <StatusLabel>订阅的节目</StatusLabel>
+        </div>
+        <Subscriptions subs={subs} onAdd={onAddSub} onRemove={onRemoveSub} onCheck={onCheckSubs} />
       </div>
     </div>
   );

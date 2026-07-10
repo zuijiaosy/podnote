@@ -19,7 +19,7 @@ pub struct EpisodeMeta {
     pub pub_date: Option<String>,
 }
 
-pub async fn resolve_episode(client: &reqwest::Client, url: &str) -> Result<EpisodeMeta> {
+pub async fn fetch_html(client: &reqwest::Client, url: &str) -> Result<String> {
     let res = client
         .get(url)
         .header("User-Agent", UA)
@@ -29,7 +29,11 @@ pub async fn resolve_episode(client: &reqwest::Client, url: &str) -> Result<Epis
     if !res.status().is_success() {
         bail!("页面请求失败: {}", res.status());
     }
-    let html = res.text().await?;
+    Ok(res.text().await?)
+}
+
+pub async fn resolve_episode(client: &reqwest::Client, url: &str) -> Result<EpisodeMeta> {
+    let html = fetch_html(client, url).await?;
     parse_episode_html(url, &html)
 }
 
@@ -116,6 +120,93 @@ pub fn parse_episode_html(url: &str, html: &str) -> Result<EpisodeMeta> {
     })
 }
 
+// ===== 节目页(订阅轮询用):/podcast/<pid> 的 __NEXT_DATA__ 自带最新单集列表 =====
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedEpisode {
+    pub eid: String,
+    pub title: String,
+    /// ISO 串,来自 pubDate
+    pub pub_date: String,
+    pub duration: Option<u64>,
+    /// 付费/私有单集拿不到音频,轮询时跳过
+    pub playable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastFeed {
+    pub pid: String,
+    pub title: String,
+    pub episodes: Vec<FeedEpisode>,
+}
+
+fn next_data(html: &str) -> Option<serde_json::Value> {
+    let re_next =
+        regex::Regex::new(r#"(?s)<script id="__NEXT_DATA__"[^>]*>(.*?)</script>"#).unwrap();
+    re_next
+        .captures(html)
+        .and_then(|c| serde_json::from_str(c.get(1).unwrap().as_str()).ok())
+}
+
+pub async fn resolve_podcast(client: &reqwest::Client, pid: &str) -> Result<PodcastFeed> {
+    let url = format!("https://www.xiaoyuzhoufm.com/podcast/{pid}");
+    let html = fetch_html(client, &url).await?;
+    parse_podcast_html(pid, &html)
+}
+
+/// 与网络分离,便于单测
+pub fn parse_podcast_html(pid: &str, html: &str) -> Result<PodcastFeed> {
+    let podcast = next_data(html)
+        .and_then(|d| d.pointer("/props/pageProps/podcast").cloned())
+        .context("没解析出节目信息——小宇宙页面结构可能变了")?;
+    let title = podcast
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let episodes = podcast
+        .get("episodes")
+        .and_then(|v| v.as_array())
+        .context("没解析出单集列表——小宇宙页面结构可能变了")?
+        .iter()
+        .filter_map(|e| {
+            Some(FeedEpisode {
+                eid: e.get("eid")?.as_str()?.to_string(),
+                title: e.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                pub_date: e.get("pubDate").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                duration: e.get("duration").and_then(|v| v.as_u64()),
+                playable: e
+                    .pointer("/enclosure/url")
+                    .or_else(|| e.pointer("/media/source/url"))
+                    .and_then(|v| v.as_str())
+                    .is_some(),
+            })
+        })
+        .collect();
+    Ok(PodcastFeed { pid: pid.to_string(), title, episodes })
+}
+
+/// 节目页 URL → pid
+pub fn podcast_pid_from_url(url: &str) -> Option<String> {
+    let path = url.split('?').next()?;
+    let seg = path.trim_end_matches('/').rsplit('/').next()?;
+    (path.contains("/podcast/") && seg.len() >= 8 && seg.chars().all(|c| c.is_ascii_alphanumeric()))
+        .then(|| seg.to_string())
+}
+
+/// 单集页 HTML → 所属节目 pid(贴单集链接添加订阅用)
+pub fn podcast_pid_in_episode_html(html: &str) -> Option<String> {
+    let d = next_data(html)?;
+    let props = d.pointer("/props/pageProps")?;
+    props
+        .pointer("/episode/podcast/pid")
+        .or_else(|| props.pointer("/data/podcast/pid"))?
+        .as_str()
+        .map(String::from)
+}
+
 fn strip_html(s: &str) -> String {
     let no_tags = regex::Regex::new(r"<[^>]+>").unwrap().replace_all(s, "\n");
     regex::Regex::new(r"\n{3,}")
@@ -154,5 +245,36 @@ mod tests {
     #[test]
     fn fails_without_audio() {
         assert!(parse_episode_html("https://x/e/3", "<html></html>").is_err());
+    }
+
+    #[test]
+    fn parses_podcast_feed() {
+        let html = r#"<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"podcast":{"pid":"p1","title":"某节目","episodes":[
+          {"eid":"e1","title":"新集","pubDate":"2026-07-09T10:00:00.000Z","duration":3600,"enclosure":{"url":"https://media.xyzcdn.net/a.m4a"}},
+          {"eid":"e2","title":"付费集","pubDate":"2026-07-08T10:00:00.000Z","duration":100}
+        ]}}}}</script>"#;
+        let feed = parse_podcast_html("p1", html).unwrap();
+        assert_eq!(feed.title, "某节目");
+        assert_eq!(feed.episodes.len(), 2);
+        assert!(feed.episodes[0].playable);
+        assert!(!feed.episodes[1].playable);
+        assert_eq!(feed.episodes[0].pub_date, "2026-07-09T10:00:00.000Z");
+    }
+
+    #[test]
+    fn extracts_podcast_pid() {
+        assert_eq!(
+            podcast_pid_from_url("https://www.xiaoyuzhoufm.com/podcast/640ee2438be5d40013fe4a87"),
+            Some("640ee2438be5d40013fe4a87".into())
+        );
+        assert_eq!(
+            podcast_pid_from_url("https://www.xiaoyuzhoufm.com/episode/69e669001e94ae6921be04dc"),
+            None
+        );
+        let html = r#"<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"episode":{"podcast":{"pid":"640ee2438be5d40013fe4a87"}}}}}</script>"#;
+        assert_eq!(
+            podcast_pid_in_episode_html(html),
+            Some("640ee2438be5d40013fe4a87".into())
+        );
     }
 }

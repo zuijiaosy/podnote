@@ -43,6 +43,16 @@ function LiveApp() {
     if (n) setNotes((m) => ({ ...m, [id]: n }));
   }, []);
   const refreshSettings = useCallback(() => api.getSettings().then(setSettingsView), []);
+  const [subs, setSubs] = useState([]);
+  const refreshSubs = useCallback(() => api.getSubscriptions().then(setSubs), []);
+
+  // 订阅自动入库/订阅表变化 → 刷新磁带架与订阅列表
+  useEffect(() => {
+    refreshSubs();
+    let un;
+    api.onSubscriptionsChanged(() => { refresh(); refreshSubs(); }).then((u) => (un = u));
+    return () => un?.();
+  }, [refresh, refreshSubs]);
 
   useEffect(() => {
     refresh();
@@ -233,8 +243,17 @@ function LiveApp() {
       llmBaseUrl: next.llmBaseUrl,
       llmModel: next.llmModel,
       notesDir: next.notesDir ?? null,
+      subAuto: next.subAuto ?? true,
     });
     refreshSettings();
+  };
+  const addSub = async (url) => { await api.addSubscription(url); refreshSubs(); };
+  const removeSub = async (pid) => { await api.removeSubscription(pid); refreshSubs(); };
+  const checkSubs = async () => {
+    const n = await api.checkSubscriptions();
+    refresh();
+    refreshSubs();
+    return n;
   };
   const saveKeys = async ({ asrKey, llmKey }) => {
     await api.setKeys(asrKey, llmKey);
@@ -255,6 +274,10 @@ function LiveApp() {
         settingsView && (
           <Settings
             view={settingsView}
+            subs={subs}
+            onAddSub={addSub}
+            onRemoveSub={removeSub}
+            onCheckSubs={checkSubs}
             onChangeField={saveSettings}
             onSaveKeys={saveKeys}
             onChooseDir={chooseDir}
