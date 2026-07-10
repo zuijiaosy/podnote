@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
 use crate::library::{ensure_dir, episode_id, short_date, EpisodeRecord, Library};
-use crate::pipeline::{asr, note, resolve, summarize};
+use crate::pipeline::{asr, note, resolve, summarize, tts};
 use crate::subscriptions::{pick_new, SubStore, Subscription};
 
 pub struct AppState {
@@ -34,6 +34,10 @@ pub struct Settings {
     pub notes_dir: Option<String>,
     /// 订阅自动处理总开关:开着才定时轮询
     pub sub_auto: bool,
+    /// 朗读音色(qwen3-tts-flash 的 voice 参数)
+    pub tts_voice: String,
+    /// 朗读倍速(独立于播客原声倍速)
+    pub tts_rate: f64,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -43,6 +47,8 @@ impl Default for Settings {
             llm_model: "grok-4.5".into(),
             notes_dir: None,
             sub_auto: true,
+            tts_voice: tts::DEFAULT_VOICE.into(),
+            tts_rate: 1.5,
         }
     }
 }
@@ -219,6 +225,165 @@ pub fn set_read(state: State<AppState>, id: String, read: bool) -> Result<(), St
         .update(&id, |r| r.read_at = ts)
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ===== 朗读(TTS):一段一 WAV 渐进落盘,首段就绪即可开播 =====
+// 事件: "tts-progress"
+//   { id, status: "processing", done, total }          — 正在合成第 done 段
+//   { id, status: "segment", seq, key, total, path }   — 第 seq 段落盘,可播
+//   { id, status: "ready" | "error", done, total, detail }
+
+fn tts_dir(lib: &Library, id: &str) -> std::path::PathBuf {
+    lib.root.join("tts").join(id)
+}
+fn tts_seg_path(lib: &Library, id: &str, seq: usize) -> std::path::PathBuf {
+    tts_dir(lib, id).join(format!("{seq:03}.wav"))
+}
+fn tts_manifest_path(lib: &Library, id: &str) -> std::path::PathBuf {
+    tts_dir(lib, id).join("manifest.json")
+}
+fn tts_invalidate(lib: &Library, id: &str) {
+    let _ = fs::remove_dir_all(tts_dir(lib, id));
+    // 单文件方案的旧产物一并清掉
+    let _ = fs::remove_file(lib.root.join("audio").join(format!("tts-{id}.wav")));
+    let _ = fs::remove_file(lib.root.join("tts").join(format!("{id}.json")));
+}
+
+/// 朗读缓存现状:{ voice, complete, segments: [{seq, key, path|null}] };没合成过则 None
+/// path 为 null 的段还没落盘(合成中断),前端播到时等 segment 事件续播
+#[tauri::command]
+pub fn get_tts(state: State<AppState>, id: String) -> Option<serde_json::Value> {
+    let lib = state.lib.lock().unwrap();
+    let m: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(tts_manifest_path(&lib, &id)).ok()?).ok()?;
+    let segments: Vec<serde_json::Value> = m
+        .get("segments")?
+        .as_array()?
+        .iter()
+        .enumerate()
+        .map(|(seq, s)| {
+            let p = tts_seg_path(&lib, &id, seq);
+            serde_json::json!({
+                "seq": seq,
+                "key": s.get("key"),
+                "path": p.exists().then(|| p.to_string_lossy().into_owned()),
+            })
+        })
+        .collect();
+    Some(serde_json::json!({
+        "voice": m.get("voice"),
+        "complete": m.get("complete").and_then(|v| v.as_bool()).unwrap_or(false),
+        "segments": segments,
+    }))
+}
+
+#[tauri::command]
+pub fn generate_tts(app: AppHandle, id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn(run_tts(app, id));
+    Ok(())
+}
+
+fn emit_tts(app: &AppHandle, id: &str, status: &str, done: usize, total: usize, detail: &str) {
+    let _ = app.emit(
+        "tts-progress",
+        serde_json::json!({ "id": id, "status": status, "done": done, "total": total, "detail": detail }),
+    );
+}
+
+async fn run_tts(app: AppHandle, id: String) {
+    let (client, note_path, voice, asr_key) = {
+        let state = app.state::<AppState>();
+        let lib = state.lib.lock().unwrap();
+        let keys = state.keys.lock().unwrap();
+        (
+            state.client.clone(),
+            lib.note_json_path(&id),
+            load_settings(&lib).tts_voice,
+            keys.0.clone(),
+        )
+    };
+    if asr_key.is_empty() {
+        return emit_tts(&app, &id, "error", 0, 0, "还没配置百炼 API Key");
+    }
+    let note_json: serde_json::Value = match fs::read_to_string(&note_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+    {
+        Some(v) => v,
+        None => return emit_tts(&app, &id, "error", 0, 0, "笔记还没生成"),
+    };
+    let segs = tts::note_segments(note_json.get("note").unwrap_or(&serde_json::Value::Null));
+    if segs.is_empty() {
+        return emit_tts(&app, &id, "error", 0, 0, "笔记里没有可朗读的内容");
+    }
+    let total = segs.len();
+
+    // 音色变了就整体作废;否则已落盘的段直接跳过(断点续传)
+    let manifest_path = {
+        let state = app.state::<AppState>();
+        let lib = state.lib.lock().unwrap();
+        let path = tts_manifest_path(&lib, &id);
+        let old_voice = fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .and_then(|m| m.get("voice").and_then(|v| v.as_str()).map(String::from));
+        if old_voice.as_deref().is_some_and(|v| v != voice) {
+            tts_invalidate(&lib, &id);
+        }
+        path
+    };
+    let seg_meta: Vec<serde_json::Value> = segs
+        .iter()
+        .map(|(key, _)| serde_json::json!({ "key": key }))
+        .collect();
+    let write_manifest = |complete: bool| {
+        let m = serde_json::json!({ "voice": voice, "complete": complete, "segments": seg_meta });
+        let _ = ensure_dir(&manifest_path);
+        let _ = fs::write(&manifest_path, serde_json::to_string(&m).unwrap_or_default());
+    };
+    write_manifest(false);
+
+    for (seq, (key, text)) in segs.iter().enumerate() {
+        let seg_path = {
+            let state = app.state::<AppState>();
+            let lib = state.lib.lock().unwrap();
+            tts_seg_path(&lib, &id, seq)
+        };
+        if !seg_path.exists() {
+            emit_tts(&app, &id, "processing", seq, total, "");
+            // 段内超长再按句切块,块 PCM 拼成这一段的单个 WAV
+            let mut pcm: Vec<u8> = Vec::new();
+            let mut fmt: Option<(u32, u16, u16)> = None;
+            for chunk in tts::split_text(text) {
+                let wav_bytes = match tts::synth(&client, &asr_key, &voice, &chunk).await {
+                    Ok(b) => b,
+                    Err(e) => return emit_tts(&app, &id, "error", seq, total, &e.to_string()),
+                };
+                let parsed = match tts::parse_wav(&wav_bytes) {
+                    Ok(p) => p,
+                    Err(e) => return emit_tts(&app, &id, "error", seq, total, &e.to_string()),
+                };
+                let this_fmt = (parsed.sample_rate, parsed.channels, parsed.bits);
+                if *fmt.get_or_insert(this_fmt) != this_fmt {
+                    return emit_tts(&app, &id, "error", seq, total, "TTS 返回的音频格式不一致");
+                }
+                pcm.extend_from_slice(&parsed.data);
+            }
+            let (sr, ch, bits) = fmt.unwrap();
+            if let Err(e) = fs::write(&seg_path, tts::write_wav(sr, ch, bits, &pcm)) {
+                return emit_tts(&app, &id, "error", seq, total, &e.to_string());
+            }
+        }
+        let _ = app.emit(
+            "tts-progress",
+            serde_json::json!({
+                "id": id, "status": "segment", "seq": seq, "key": key,
+                "total": total, "path": seg_path.to_string_lossy(),
+            }),
+        );
+    }
+    write_manifest(true);
+    emit_tts(&app, &id, "ready", total, total, "");
 }
 
 #[tauri::command]
@@ -564,6 +729,7 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
         let lib = state.lib.lock().unwrap();
         let _ = fs::write(lib.note_json_path(&id), serde_json::to_string_pretty(&note_json).unwrap_or_default());
         let _ = fs::write(lib.note_md_path(&id), &md);
+        tts_invalidate(&lib, &id); // 笔记内容变了,旧朗读作废
         let _ = lib.update(&id, |r| r.status = "ready".into());
     }
     if let Some(dir) = settings.notes_dir.as_deref().filter(|d| !d.is_empty()) {

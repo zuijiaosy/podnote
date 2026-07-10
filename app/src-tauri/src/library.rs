@@ -114,6 +114,9 @@ impl Library {
             let _ = fs::remove_file(p);
         }
         let _ = fs::remove_file(self.root.join("meta").join(format!("{id}.json")));
+        let _ = fs::remove_dir_all(self.root.join("tts").join(id));
+        let _ = fs::remove_file(self.root.join("tts").join(format!("{id}.json")));
+        let _ = fs::remove_file(self.root.join("audio").join(format!("tts-{id}.wav")));
         Ok(())
     }
 }

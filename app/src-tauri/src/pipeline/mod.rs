@@ -4,3 +4,4 @@ pub mod asr;
 pub mod note;
 pub mod resolve;
 pub mod summarize;
+pub mod tts;

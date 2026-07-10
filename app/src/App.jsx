@@ -34,6 +34,19 @@ function LiveApp() {
   const [transcripts, setTranscripts] = useState({}); // id -> sentences[]
   const audioRef = useRef(null);
   const speedRef = useRef(1); // WebKit 在 play() 时会重置 playbackRate,须在开始播放后补设
+  // ===== 朗读(TTS):一段一文件渐进播放,独立 <audio>,与播客原声互斥 =====
+  const [ttsInfo, setTtsInfo] = useState({}); // id -> {complete, segments:[{seq,key,url|null}]}
+  const [ttsPlaying, setTtsPlaying] = useState(false);
+  const [ttsWaiting, setTtsWaiting] = useState(false); // 播到了还没合成完的段,等落盘续播
+  const [ttsEpId, setTtsEpId] = useState(null); // 正在/最后朗读的剧集
+  const [ttsIdx, setTtsIdx] = useState(-1);     // 当前朗读段序号(高亮用)
+  const [ttsGen, setTtsGen] = useState({});     // id -> {done,total} | {error}
+  const [ttsRate, setTtsRate] = useState(1.5);  // 朗读倍速,独立于播客原声
+  const ttsRateRef = useRef(1.5);
+  const ttsAudioRef = useRef(null);
+  const ttsWantRef = useRef(null); // {id, seq}:该段落盘后自动开播
+  const ttsInfoRef = useRef({});
+  useEffect(() => { ttsInfoRef.current = ttsInfo; }, [ttsInfo]);
 
   const refresh = useCallback(async () => {
     const recs = await api.getLibrary();
@@ -147,6 +160,130 @@ function LiveApp() {
   const applyFilter = (name) => { setFilterShow(name); reselectFor(showArchived, name); };
   const toggleArchivedView = () => { setShowArchived(!showArchived); reselectFor(!showArchived, filterShow); };
 
+  const loadTts = useCallback(async (id) => {
+    const got = await api.getTts(id);
+    if (!got) return null;
+    const { convertFileSrc } = await import("@tauri-apps/api/core");
+    const info = {
+      complete: got.complete,
+      segments: got.segments.map((s) => ({
+        seq: s.seq, key: s.key, url: s.path ? convertFileSrc(s.path) : null,
+      })),
+    };
+    setTtsInfo((m) => ({ ...m, [id]: info }));
+    return info;
+  }, []);
+
+  /** 播第 seq 段;该段还没落盘则挂起等 segment 事件 */
+  const playSeg = useCallback((id, seq, url) => {
+    const a = ttsAudioRef.current;
+    if (!a) return;
+    setTtsEpId(id);
+    setTtsIdx(seq);
+    if (!url) {
+      ttsWantRef.current = { id, seq };
+      setTtsWaiting(true);
+      return;
+    }
+    ttsWantRef.current = null;
+    setTtsWaiting(false);
+    audioRef.current?.pause(); // 朗读与播客原声互斥
+    a.src = url;
+    a.dataset.epid = id;
+    a.dataset.seq = seq;
+    a.play()
+      .then(() => { a.playbackRate = ttsRateRef.current; })
+      .catch((e) => console.error("朗读播放失败", e));
+  }, []);
+  const playSegRef = useRef(playSeg);
+  useEffect(() => { playSegRef.current = playSeg; });
+
+  // 合成事件:segment 落盘即登记,正好是等着的那段就立刻续播
+  useEffect(() => {
+    let un;
+    api.onTtsProgress(async (p) => {
+      if (p.status === "processing") {
+        setTtsGen((m) => ({ ...m, [p.id]: { done: p.done, total: p.total } }));
+      } else if (p.status === "segment") {
+        const { convertFileSrc } = await import("@tauri-apps/api/core");
+        const url = convertFileSrc(p.path);
+        setTtsInfo((m) => {
+          const cur = m[p.id] ?? { complete: false, segments: [] };
+          const segments = [...cur.segments];
+          while (segments.length < p.total) {
+            segments.push({ seq: segments.length, key: null, url: null });
+          }
+          segments[p.seq] = { seq: p.seq, key: p.key, url };
+          return { ...m, [p.id]: { ...cur, segments } };
+        });
+        const want = ttsWantRef.current;
+        if (want && want.id === p.id && want.seq === p.seq) {
+          playSegRef.current(p.id, p.seq, url);
+        }
+      } else if (p.status === "ready") {
+        setTtsGen((m) => { const n = { ...m }; delete n[p.id]; return n; });
+        setTtsInfo((m) => (m[p.id] ? { ...m, [p.id]: { ...m[p.id], complete: true } } : m));
+      } else if (p.status === "error") {
+        ttsWantRef.current = null;
+        setTtsWaiting(false);
+        setTtsGen((m) => ({ ...m, [p.id]: { error: p.detail } }));
+      }
+    }).then((u) => (un = u));
+    return () => un?.();
+  }, []);
+
+  /** 朗读/停止:首段已缓存立即播;没有就发起合成,首段落盘即开播 */
+  const toggleTts = async () => {
+    if (!ep) return;
+    const a = ttsAudioRef.current;
+    if ((ttsPlaying || ttsWaiting) && ttsEpId === ep.id) {
+      ttsWantRef.current = null;
+      setTtsWaiting(false);
+      a?.pause();
+      return;
+    }
+    // 同一集暂停后再点:原地续播
+    if (ttsEpId === ep.id && a?.dataset.epid === ep.id && a.src) {
+      audioRef.current?.pause();
+      a.play().then(() => { a.playbackRate = ttsRateRef.current; }).catch(() => {});
+      return;
+    }
+    const info = ttsInfo[ep.id] ?? (await loadTts(ep.id));
+    const gen = ttsGen[ep.id];
+    // 缓存不完整且没有合成在跑(上次中断/失败)→ 续跑,已有的段会被跳过
+    if ((!info || !info.complete) && (!gen || gen.error)) {
+      setTtsGen((m) => ({ ...m, [ep.id]: { done: 0, total: info?.segments?.length ?? 0 } }));
+      try {
+        await api.generateTts(ep.id);
+      } catch (e) {
+        setTtsGen((m) => ({ ...m, [ep.id]: { error: String(e) } }));
+        return;
+      }
+    }
+    playSeg(ep.id, 0, info?.segments?.[0]?.url ?? null);
+  };
+
+  /** 朗读倍速:1 → 1.5 → 2 循环,写入设置持久化 */
+  const cycleTtsRate = () => {
+    const next = { 1: 1.5, 1.5: 2, 2: 1 }[ttsRate] ?? 1.5;
+    setTtsRate(next);
+    ttsRateRef.current = next;
+    const a = ttsAudioRef.current;
+    if (a) {
+      a.defaultPlaybackRate = next;
+      a.playbackRate = next;
+    }
+    if (settingsView) saveSettings({ ttsRate: next });
+  };
+  // 启动时从设置恢复朗读倍速
+  useEffect(() => {
+    const r = settingsView?.ttsRate;
+    if (r && r !== ttsRateRef.current) {
+      setTtsRate(r);
+      ttsRateRef.current = r;
+    }
+  }, [settingsView]);
+
   /** 归档/撤销归档当前单集;归档后自动选中未读视图的下一条 */
   const toggleRead = async () => {
     if (!ep) return;
@@ -194,6 +331,7 @@ function LiveApp() {
     const a = audioRef.current;
     if (!ep || !a) return;
     if (playing) { a.pause(); return; }
+    ttsAudioRef.current?.pause(); // 播客原声与朗读互斥
     let info = audioInfo[ep.id];
     if (!info) {
       // 首次播放:先把音频拉到本地
@@ -291,6 +429,8 @@ function LiveApp() {
       llmModel: next.llmModel,
       notesDir: next.notesDir ?? null,
       subAuto: next.subAuto ?? true,
+      ttsVoice: next.ttsVoice || "Cherry",
+      ttsRate: next.ttsRate ?? 1.5,
     });
     refreshSettings();
   };
@@ -344,6 +484,10 @@ function LiveApp() {
             activeId={activeId}
             onSelect={(id) => {
               audioRef.current?.pause();
+              ttsAudioRef.current?.pause();
+              ttsWantRef.current = null;
+              setTtsWaiting(false);
+              setTtsIdx(-1);
               setActiveId(id);
               setPlayFrac(0);
               setDlPct(null);
@@ -377,12 +521,46 @@ function LiveApp() {
               onSeekFrac={seekFrac}
               onCycleSpeed={cycleSpeed}
               onToggleRead={toggleRead}
+              tts={{
+                playing: ttsPlaying && ttsEpId === ep?.id,
+                waiting: ttsWaiting && ttsEpId === ep?.id,
+                gen: ttsGen[ep?.id] ?? null,
+                rate: ttsRate,
+              }}
+              ttsSeg={
+                ttsEpId === ep?.id && ttsIdx >= 0 && (ttsPlaying || ttsWaiting)
+                  ? ttsInfo[ep?.id]?.segments?.[ttsIdx]?.key ?? null
+                  : null
+              }
+              onToggleTts={toggleTts}
+              onCycleTtsRate={cycleTtsRate}
               onRetry={() => ep && api.retry(ep.id)}
               onGoSettings={() => setView("settings")}
             />
           )}
         </>
       )}
+      <audio
+        ref={ttsAudioRef}
+        style={{ display: "none" }}
+        onPlay={(e) => { setTtsPlaying(true); e.currentTarget.playbackRate = ttsRateRef.current; }}
+        onLoadedMetadata={(e) => { e.currentTarget.playbackRate = ttsRateRef.current; }}
+        onPause={() => setTtsPlaying(false)}
+        onEnded={(e) => {
+          // 一段播完接下一段;还没落盘就挂起等 segment 事件
+          const a = e.currentTarget;
+          const id = a.dataset.epid;
+          const seq = Number(a.dataset.seq ?? -1);
+          const info = ttsInfoRef.current[id];
+          const next = seq + 1;
+          if (!info || next >= info.segments.length) {
+            setTtsPlaying(false);
+            setTtsIdx(-1);
+            return;
+          }
+          playSegRef.current(id, next, info.segments[next]?.url ?? null);
+        }}
+      />
       <audio
         ref={audioRef}
         style={{ display: "none" }}

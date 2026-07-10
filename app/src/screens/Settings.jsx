@@ -63,6 +63,7 @@ const DEFAULTS = {
   asrHost: "https://llm-xy8sn8964kplkx1s.cn-beijing.maas.aliyuncs.com",
   llmBaseUrl: "https://api.codexzh.com/v1",
   llmModel: "grok-4.5",
+  ttsVoice: "Cherry",
 };
 
 /** 订阅管理:节目列表 + 添加(节目/单集链接均可)+ 立即检查 */
@@ -174,6 +175,10 @@ export function Settings({
           <Row title="笔记模型" hint="模型 ID,按网关支持填写,清空恢复默认">
             <TextField value={view.llmModel} fallback={DEFAULTS.llmModel}
               onSave={(v) => onChangeField({ llmModel: v })} label="笔记模型" width={200} />
+          </Row>
+          <Row title="朗读音色" hint="qwen3-tts-flash 音色,如 Cherry/Ethan,清空恢复默认">
+            <TextField value={view.ttsVoice} fallback={DEFAULTS.ttsVoice}
+              onSave={(v) => onChangeField({ ttsVoice: v })} label="朗读音色" width={200} />
           </Row>
           <Row title="笔记导出目录" hint="额外导出一份 Markdown 到你的笔记库(可选)">
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>

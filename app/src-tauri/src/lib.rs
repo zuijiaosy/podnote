@@ -39,6 +39,8 @@ pub fn run() {
             commands::reveal_note,
             commands::get_audio_path,
             commands::download_audio,
+            commands::get_tts,
+            commands::generate_tts,
             commands::get_settings,
             commands::set_settings,
             commands::set_keys,

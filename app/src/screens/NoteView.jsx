@@ -31,7 +31,10 @@ function SectionHead({ idx, title }) {
   );
 }
 
-function Console({ ep, onToggleRead }) {
+function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate }) {
+  const ttsLabel = tts?.gen?.error ? "朗读失败 · 重试"
+    : tts?.waiting ? (tts?.gen ? `合成中 ${tts.gen.done + 1}/${tts.gen.total}` : "等待合成…")
+    : tts?.playing ? "停止朗读" : "朗读";
   const statusLabel = ep.statusLabel
     || { ready: "READY", processing: "WORKING", error: "ERROR", off: "QUEUED" }[ep.status];
   return (
@@ -55,6 +58,16 @@ function Console({ ep, onToggleRead }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <IndicatorLight status={ep.status} label={statusLabel} />
         <span style={{ flex: 1 }} />
+        {ep.status === "ready" && (
+          <>
+            {(tts?.playing || tts?.waiting) && (
+              <Button variant="ghost" size="sm" onClick={() => onCycleTtsRate?.()}>
+                {`${tts?.rate ?? 1.5}×`}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => onToggleTts?.()}>{ttsLabel}</Button>
+          </>
+        )}
         <Button variant="ghost" size="sm" onClick={() => onToggleRead?.()}>
           {ep.readAt ? "已归档 · 撤销" : "归档 E"}
         </Button>
@@ -68,7 +81,7 @@ function Console({ ep, onToggleRead }) {
 }
 
 /** 阅读井容器:NOTES(笔记,默认) / TRANSCRIPT(逐句字幕) 双 tab */
-function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript }) {
+function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, ttsSeg }) {
   const [tab, setTab] = useState("notes");
   useEffect(() => setTab("notes"), [ep.id]);
   useEffect(() => {
@@ -104,7 +117,7 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript }) 
         {tabBtn("transcript", "字幕")}
       </div>
       {tab === "notes" ? (
-        <Reader ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} />
+        <Reader ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} ttsSeg={ttsSeg} />
       ) : (
         <Transcript
           sentences={transcript}
@@ -117,17 +130,29 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript }) 
   );
 }
 
-function Reader({ ep, playFrac, onSeekFrac }) {
+function Reader({ ep, playFrac, onSeekFrac, ttsSeg }) {
   const note = ep.note;
   const mkSeek = (t) => () => onSeekFrac(t / ep.durationSec);
   const isActive = (t) => Math.abs(t / ep.durationSec - playFrac) < 0.015;
+  // 朗读到哪段,视口跟到哪段
+  useEffect(() => {
+    if (!ttsSeg) return;
+    document.querySelector(`[data-tts="${ttsSeg}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [ttsSeg]);
+  /** 卡片类块(自带底色)的朗读高亮 */
+  const hl = (key) => (ttsSeg === key
+    ? { background: "var(--fill-active)", outline: "1px solid var(--line-soft)" }
+    : {});
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
       <div style={{ maxWidth: 648, margin: "0 auto", padding: "24px 40px 48px", boxSizing: "border-box" }}>
-        <div style={{
+        <div data-tts="tldr" style={{
           background: "var(--panel)", border: "1px solid var(--line-soft)",
           borderRadius: "var(--radius)", padding: "16px 24px",
           display: "flex", flexDirection: "column", gap: 8,
+          transition: "background var(--dur) var(--ease)",
+          ...hl("tldr"),
         }}>
           <StatusLabel tone="dim">一句话</StatusLabel>
           <span style={{
@@ -138,7 +163,15 @@ function Reader({ ep, playFrac, onSeekFrac }) {
 
         <SectionHead idx="01" title="核心观点" />
         {note.points.map((p, i) => (
-          <div key={i} style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div key={i} data-tts={`point-${i}`} style={{
+            display: "flex", flexDirection: "column", gap: 8,
+            borderRadius: "var(--radius)",
+            transition: "background var(--dur) var(--ease)",
+            // 负外边距 + 等量内边距:高亮出现底色时文字不位移
+            ...(ttsSeg === `point-${i}`
+              ? { background: "var(--fill-active)", padding: "12px 16px", margin: "12px -16px 0" }
+              : { padding: 0, margin: "24px 0 0" }),
+          }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
               <Timestamp time={p.ts} active={isActive(p.t)} onSeek={mkSeek(p.t)} />
               <span style={{
@@ -156,9 +189,11 @@ function Reader({ ep, playFrac, onSeekFrac }) {
 
         <SectionHead idx="02" title="值得记住的话" />
         {note.quotes.map((q, i) => (
-          <div key={i} style={{
+          <div key={i} data-tts={`quote-${i}`} style={{
             marginTop: 16, background: "var(--panel)", borderRadius: "var(--radius)",
             padding: "16px 24px", display: "flex", flexDirection: "column", gap: 8,
+            transition: "background var(--dur) var(--ease)",
+            ...hl(`quote-${i}`),
           }}>
             <span style={{
               fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
@@ -336,16 +371,17 @@ const Hint = ({ children, ink }) => (
   }}>{children}</div>
 );
 
-export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, onRetry, onGoSettings }) {
+export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, tts, ttsSeg, onToggleTts, onCycleTtsRate, onRetry, onGoSettings }) {
   if (!ep) return null;
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-      <Console ep={ep} onToggleRead={onToggleRead} />
+      <Console ep={ep} onToggleRead={onToggleRead} tts={tts} onToggleTts={onToggleTts} onCycleTtsRate={onCycleTtsRate} />
       {ep.status === "ready" && ep.note ? (
         <>
           <ReaderTabs
             ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac}
             transcript={transcript} onLoadTranscript={onLoadTranscript}
+            ttsSeg={ttsSeg}
           />
           <Player
             ep={ep} playFrac={playFrac} playing={playing} speed={speed} bars={bars} downloadPct={downloadPct}

@@ -18,6 +18,9 @@ export const api = {
   revealNote: (id) => invoke("reveal_note", { id }),
   getAudioPath: (id) => invoke("get_audio_path", { id }),
   downloadAudio: (id) => invoke("download_audio", { id }),
+  /** 已合成的朗读音频 {path, voice, segments};没有则 null */
+  getTts: (id) => invoke("get_tts", { id }),
+  generateTts: (id) => invoke("generate_tts", { id }),
   getSettings: () => invoke("get_settings"),
   setSettings: (settings) => invoke("set_settings", { settings }),
   setKeys: (asrKey, llmKey) => invoke("set_keys", { asrKey: asrKey ?? null, llmKey: llmKey ?? null }),
@@ -32,6 +35,8 @@ export const api = {
   onAudioProgress: (cb) => listen("audio-progress", (e) => cb(e.payload)),
   /** 订阅表或自动入库有变化 */
   onSubscriptionsChanged: (cb) => listen("subscriptions-changed", () => cb()),
+  /** 朗读合成进度 {id, status, done, total, detail} */
+  onTtsProgress: (cb) => listen("tts-progress", (e) => cb(e.payload)),
 };
 
 /** 后端状态 → 组件四态 */
