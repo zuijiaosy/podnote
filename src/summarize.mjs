@@ -14,10 +14,33 @@ import { getModel } from "@earendil-works/pi-ai/compat";
 import { parseNote } from "./note.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MODEL_PROVIDER = process.env.PI_PROVIDER || "anthropic";
-const MODEL_ID = process.env.PI_MODEL || "claude-sonnet-4-6";
-// 自定义网关:设 PI_BASE_URL(或 ANTHROPIC_BASE_URL)覆盖官方 API 地址,key 仍走 ANTHROPIC_API_KEY
-const BASE_URL = process.env.PI_BASE_URL || process.env.ANTHROPIC_BASE_URL || "";
+// 默认走自定义网关(OpenAI Responses 协议)。想换模型/网关改这四个环境变量;
+// PI_BASE_URL 置空则回落到 pi 内置目录(如官方 anthropic)。
+const MODEL_PROVIDER = process.env.PI_PROVIDER || "codexzh";
+const MODEL_ID = process.env.PI_MODEL || "grok-4.5";
+const BASE_URL = process.env.PI_BASE_URL ?? "https://api.codexzh.com/v1";
+const API_PROTOCOL = process.env.PI_API || "openai-responses";
+const API_KEY =
+  process.env.PI_API_KEY ||
+  process.env.OPENAI_API_KEY ||
+  process.env.ANTHROPIC_API_KEY;
+
+function buildModel() {
+  if (!BASE_URL) return getModel(MODEL_PROVIDER, MODEL_ID);
+  // 自定义网关:手工构造 Model 描述对象,协议由 PI_API 指定
+  return {
+    id: MODEL_ID,
+    name: MODEL_ID,
+    api: API_PROTOCOL,
+    provider: MODEL_PROVIDER,
+    baseUrl: BASE_URL,
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 200000,
+    maxTokens: 32000,
+  };
+}
 
 const promptTemplate = readFileSync(
   path.join(__dirname, "..", "prompts", "note.md"),
@@ -42,6 +65,11 @@ export function srtToTimedText(srt) {
 }
 
 export async function summarize({ meta, srt }) {
+  if (!API_KEY) {
+    throw new Error(
+      "缺少 API key:请设置 PI_API_KEY(或 OPENAI_API_KEY / ANTHROPIC_API_KEY)"
+    );
+  }
   const timedText = srtToTimedText(srt);
   const prompt = promptTemplate
     .replaceAll("{{title}}", meta.title)
@@ -53,10 +81,9 @@ export async function summarize({ meta, srt }) {
     initialState: {
       systemPrompt:
         "你是一个中文播客笔记助手。只输出一个合法的 JSON 对象,不要 Markdown 代码块,不要任何前言后语。",
-      model: BASE_URL
-        ? { ...getModel(MODEL_PROVIDER, MODEL_ID), baseUrl: BASE_URL }
-        : getModel(MODEL_PROVIDER, MODEL_ID),
+      model: buildModel(),
     },
+    getApiKey: () => API_KEY,
   });
 
   let out = "";

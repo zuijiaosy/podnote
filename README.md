@@ -46,8 +46,10 @@ node src/index.mjs https://www.xiaoyuzhoufm.com/episode/69e669001e94ae6921be04dc
 |---|---|---|
 | `WHISPER_MODEL` | `models/ggml-large-v3.bin` | whisper 模型路径 |
 | `WHISPER_BIN` | `whisper-cli` | whisper.cpp 可执行文件 |
-| `PI_PROVIDER` / `PI_MODEL` | `anthropic` / `claude-sonnet-4-6` | 走 pi-ai 的模型选择 |
-| `PI_BASE_URL` (或 `ANTHROPIC_BASE_URL`) | 官方地址 | 自定义 API 网关地址,key 仍走 `ANTHROPIC_API_KEY` |
+| `PI_MODEL` / `PI_PROVIDER` | `grok-4.5` / `codexzh` | 模型与 provider 标识 |
+| `PI_BASE_URL` | `https://api.codexzh.com/v1` | API 网关地址;置空回落 pi 内置目录(官方 anthropic 等) |
+| `PI_API` | `openai-responses` | 协议:`openai-responses` / `openai-completions` / `anthropic-messages` |
+| `PI_API_KEY` (或 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`) | 无 | API 密钥,必填 |
 | `NOTES_DIR` | `notes` | 笔记输出目录,可直接指到你的笔记库 |
 
 ## 已知的脆弱点
