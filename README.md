@@ -49,10 +49,16 @@ node src/index.mjs https://www.xiaoyuzhoufm.com/episode/xxxx
 - **fun-asr 转写**(`src/asr.mjs`):走 dashscope 标准异步 API(专属 host)。说话人分离官方建议音频 ≤2 小时;节目名等专有名词偶有错听(如"硬地骇客"→"一粒骇客"),LLM 有 shownotes 兜底,后续可加热词表。
 - **pi-ai API 版本**:`getModel` 目前在 `@earendil-works/pi-ai/compat` 保留(已标 deprecated)。如果 import 报错,按 pi 仓库 `packages/agent` 的 README 调整 `src/summarize.mjs`。
 
-## 下一步路线
+## 路线图
 
-1. 拿 3-5 集真实节目跑,迭代 `prompts/note.md` 直到笔记让自己满意
-2. Tauri 2 壳(设计基准:`Podnote 正式设计 standalone.html`)+ 本目录改造成 sidecar(常驻、订阅轮询、通知)
-3. 远期:笔记入库 + 给 agent 挂 search_notes 工具,实现"跟我听过的所有播客对话"
+已完成:Tauri 2 桌面应用(`app/`)——订阅自动化(节目更新自动转写生成笔记 + 系统通知)、
+收件箱模型(未读/归档/频道筛选/快捷键 E)、笔记朗读(qwen3-tts-flash 分段合成、渐进播放、
+跟随高亮、独立倍速)、浏览器模拟实况自测模式(`?mock=1`)与 pncli 自测子命令(`feed`/`tts`)。
+
+**下一阶段(已定方向,暂缓启动):检索与对话**
+
+1. 笔记与转写内容入库——届时再引入 SQLite + 全文索引;当前数据量下 JSON 文件够用,不提前上
+2. 全库检索——按内容找回"某人在某集说过的话",笔记(观点/金句)与逐句转写都可检索
+3. AI 对话——给 agent 挂检索工具,实现"跟我听过的所有播客对话"(第二大脑,价值随积累复利)
 
 注意:转写走云端,音频 URL 会提交给阿里百炼——设计稿里"转写在本地进行"的文案在 Tauri 阶段要同步修改。
