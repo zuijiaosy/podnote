@@ -8,6 +8,7 @@ export const api = {
   getLibrary: () => invoke("get_library"),
   getNote: (id) => invoke("get_note", { id }),
   getNoteMarkdown: (id) => invoke("get_note_markdown", { id }),
+  getTranscript: (id) => invoke("get_transcript", { id }),
   addEpisode: (url) => invoke("add_episode", { url }),
   retry: (id) => invoke("retry_episode", { id }),
   regenerate: (id) => invoke("regenerate_note", { id }),

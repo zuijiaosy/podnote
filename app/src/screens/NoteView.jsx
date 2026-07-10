@@ -1,7 +1,9 @@
-// 右侧主视图:仪表头 + 阅读井(五段式笔记,带说话人归属) + 播放器
+// 右侧主视图:仪表头 + 阅读井(NOTES/TRANSCRIPT 双 tab) + 播放器
 // 布局与「Podnote 正式设计 standalone.html」一致;who 归属为宪法 v2 修正新增
+import { useEffect, useState } from "react";
 import { Button } from "../components/core.jsx";
 import { StatusLabel, IndicatorLight, Timestamp, Waveform } from "../components/instrument.jsx";
+import { Transcript } from "./Transcript.jsx";
 import { fmt } from "../lib/format.js";
 
 function Who({ name }) {
@@ -62,15 +64,63 @@ function Console({ ep }) {
   );
 }
 
+/** 阅读井容器:NOTES(笔记,默认) / TRANSCRIPT(逐句字幕) 双 tab */
+function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript }) {
+  const [tab, setTab] = useState("notes");
+  useEffect(() => setTab("notes"), [ep.id]);
+  useEffect(() => {
+    if (tab === "transcript" && !transcript) onLoadTranscript?.();
+  }, [tab, transcript, onLoadTranscript]);
+
+  const tabBtn = (id, label) => (
+    <button
+      onClick={() => setTab(id)}
+      style={{
+        fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+        fontWeight: "var(--weight-medium)",
+        letterSpacing: "var(--tracking-machine-wide)", textTransform: "uppercase",
+        background: "transparent", border: "none",
+        borderBottom: tab === id ? "1px solid var(--ink)" : "1px solid transparent",
+        color: tab === id ? "var(--ink)" : "var(--scale)",
+        padding: "4px 8px 8px", cursor: "pointer",
+        transition: "color var(--dur) var(--ease), border-color var(--dur) var(--ease)",
+      }}
+    >{label}</button>
+  );
+
+  return (
+    <div style={{
+      flex: 1, minHeight: 0, background: "var(--well)", borderRadius: "var(--radius)",
+      display: "flex", flexDirection: "column",
+    }}>
+      <div style={{
+        flex: "none", display: "flex", gap: 8, padding: "12px 24px 0",
+        borderBottom: "1px solid var(--line-faint)",
+      }}>
+        {tabBtn("notes", "NOTES")}
+        {tabBtn("transcript", "TRANSCRIPT")}
+      </div>
+      {tab === "notes" ? (
+        <Reader ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} />
+      ) : (
+        <Transcript
+          sentences={transcript}
+          speakers={ep.note?.speakers}
+          playSec={playFrac * ep.durationSec}
+          onSeekSec={(sec) => onSeekFrac(sec / ep.durationSec)}
+        />
+      )}
+    </div>
+  );
+}
+
 function Reader({ ep, playFrac, onSeekFrac }) {
   const note = ep.note;
   const mkSeek = (t) => () => onSeekFrac(t / ep.durationSec);
   const isActive = (t) => Math.abs(t / ep.durationSec - playFrac) < 0.015;
   return (
-    <div style={{
-      flex: 1, minHeight: 0, background: "var(--well)", borderRadius: "var(--radius)", overflow: "auto",
-    }}>
-      <div style={{ maxWidth: 648, margin: "0 auto", padding: "32px 40px 48px", boxSizing: "border-box" }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+      <div style={{ maxWidth: 648, margin: "0 auto", padding: "24px 40px 48px", boxSizing: "border-box" }}>
         <div style={{
           background: "var(--panel)", border: "1px solid var(--line-soft)",
           borderRadius: "var(--radius)", padding: "16px 24px",
@@ -246,14 +296,17 @@ const Hint = ({ children, ink }) => (
   }}>{children}</div>
 );
 
-export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, onTogglePlay, onSeekFrac, onCycleSpeed, onRetry, onGoSettings }) {
+export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onRetry, onGoSettings }) {
   if (!ep) return null;
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
       <Console ep={ep} />
       {ep.status === "ready" && ep.note ? (
         <>
-          <Reader ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} />
+          <ReaderTabs
+            ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac}
+            transcript={transcript} onLoadTranscript={onLoadTranscript}
+          />
           <Player
             ep={ep} playFrac={playFrac} playing={playing} speed={speed} bars={bars} downloadPct={downloadPct}
             onTogglePlay={onTogglePlay} onSeekFrac={onSeekFrac} onCycleSpeed={onCycleSpeed}

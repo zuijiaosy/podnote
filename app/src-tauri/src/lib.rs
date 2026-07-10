@@ -25,6 +25,7 @@ pub fn run() {
             commands::get_library,
             commands::get_note,
             commands::get_note_markdown,
+            commands::get_transcript,
             commands::add_episode,
             commands::retry_episode,
             commands::regenerate_note,

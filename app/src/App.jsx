@@ -29,6 +29,7 @@ function LiveApp() {
   const [speed, setSpeed] = useState(1);
   const [audioInfo, setAudioInfo] = useState({}); // id -> {url, peaks}
   const [dlPct, setDlPct] = useState(null);
+  const [transcripts, setTranscripts] = useState({}); // id -> sentences[]
   const audioRef = useRef(null);
 
   const refresh = useCallback(async () => {
@@ -266,6 +267,13 @@ function LiveApp() {
               playFrac={playFrac} playing={playing} speed={speed}
               bars={audioInfo[ep?.id]?.peaks ?? null}
               downloadPct={dlPct}
+              transcript={transcripts[ep?.id] ?? null}
+              onLoadTranscript={() => {
+                if (!ep || transcripts[ep.id]) return;
+                api.getTranscript(ep.id).then((s) => {
+                  if (s) setTranscripts((m) => ({ ...m, [ep.id]: s }));
+                });
+              }}
               onTogglePlay={togglePlay}
               onSeekFrac={seekFrac}
               onCycleSpeed={cycleSpeed}

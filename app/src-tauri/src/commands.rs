@@ -39,8 +39,11 @@ impl Default for Settings {
     }
 }
 
+#[cfg(not(debug_assertions))]
 const KEYCHAIN_SERVICE: &str = "Podnote";
+#[cfg(not(debug_assertions))]
 const KEY_ASR: &str = "bailian-api-key";
+#[cfg(not(debug_assertions))]
 const KEY_LLM: &str = "llm-api-key";
 
 #[cfg(not(debug_assertions))]
@@ -196,6 +199,27 @@ pub fn delete_episode(state: State<AppState>, id: String) -> Result<(), String> 
 pub fn reveal_note(state: State<AppState>, id: String) -> Result<(), String> {
     let path = state.lib.lock().unwrap().note_md_path(&id);
     tauri_plugin_opener::reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
+/// 逐句转写(字幕视图用):[{t 秒, end 秒, spk "S1", text}]
+#[tauri::command]
+pub fn get_transcript(state: State<AppState>, id: String) -> Option<Vec<serde_json::Value>> {
+    let path = state.lib.lock().unwrap().asr_path(&id);
+    let v: serde_json::Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+    let sents = v.pointer("/transcripts/0/sentences")?.as_array()?;
+    Some(
+        sents
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "t": s.get("begin_time").and_then(|x| x.as_u64()).unwrap_or(0) as f64 / 1000.0,
+                    "end": s.get("end_time").and_then(|x| x.as_u64()).unwrap_or(0) as f64 / 1000.0,
+                    "spk": s.get("speaker_id").and_then(|x| x.as_u64()).map(|i| format!("S{}", i + 1)),
+                    "text": s.get("text").and_then(|x| x.as_str()).unwrap_or("").trim(),
+                })
+            })
+            .collect(),
+    )
 }
 
 /// 已下载音频的本地路径(未下载返回 None)
