@@ -1,5 +1,6 @@
 // 设置 — 行式布局与「Podnote 正式设计 standalone.html」一致
-// 设计修正落地:whisper 选项删除;LLM 模型真实化;key 密文;订阅 V2 占位
+// key 输入失焦即存钥匙串;已保存时占位提示,不回显密文
+import { useState } from "react";
 import { Button, Input, Lever } from "../components/core.jsx";
 import { StatusLabel } from "../components/instrument.jsx";
 
@@ -52,9 +53,25 @@ function Seg({ options, value, onChange }) {
   );
 }
 
-export function Settings({ settings, onChange, onBack, onChooseDir }) {
-  const s = settings;
-  const set = (patch) => onChange?.({ ...s, ...patch });
+function KeyInput({ saved, onSave, label }) {
+  const [val, setVal] = useState("");
+  return (
+    <Input
+      type="password"
+      value={val}
+      placeholder={saved ? "已保存 · 输入以更换" : "sk-…"}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={() => { if (val.trim()) { onSave(val.trim()); setVal(""); } }}
+      style={{ width: 264 }}
+      aria-label={label}
+    />
+  );
+}
+
+const DEFAULT_MODEL = "grok-4.5";
+
+export function Settings({ view, onChangeField, onSaveKeys, onChooseDir, onBack }) {
+  const custom = view.llmModel !== DEFAULT_MODEL;
   return (
     <div style={{
       flex: 1, minWidth: 0, overflow: "auto",
@@ -70,39 +87,39 @@ export function Settings({ settings, onChange, onBack, onChooseDir }) {
           background: "var(--well)", borderRadius: "var(--radius)",
           padding: "8px 24px", boxSizing: "border-box", display: "flex", flexDirection: "column",
         }}>
-          <Row title="百炼 API Key" hint="转写服务密钥,只存在本机钥匙串">
-            <Input
-              type="password" value={s.asrKey}
-              onChange={(e) => set({ asrKey: e.target.value })}
-              style={{ width: 264 }} aria-label="百炼 API Key"
-            />
+          <Row title={<><span>百炼 API Key</span><StatusLabel tone={view.asrKeySet ? "ready" : "dim"}>{view.asrKeySet ? "SET" : "EMPTY"}</StatusLabel></>}
+            hint="转写服务密钥,只存在本机钥匙串">
+            <KeyInput saved={view.asrKeySet} label="百炼 API Key" onSave={(v) => onSaveKeys({ asrKey: v })} />
           </Row>
-          <Row title="LLM API Key" hint="笔记生成密钥,只存在本机钥匙串">
-            <Input
-              type="password" value={s.llmKey}
-              onChange={(e) => set({ llmKey: e.target.value })}
-              style={{ width: 264 }} aria-label="LLM API Key"
-            />
+          <Row title={<><span>LLM API Key</span><StatusLabel tone={view.llmKeySet ? "ready" : "dim"}>{view.llmKeySet ? "SET" : "EMPTY"}</StatusLabel></>}
+            hint="笔记生成密钥,只存在本机钥匙串">
+            <KeyInput saved={view.llmKeySet} label="LLM API Key" onSave={(v) => onSaveKeys({ llmKey: v })} />
           </Row>
           <Row title="笔记模型" hint="经你的 LLM 网关调用">
-            <Seg options={["GROK-4.5", "CUSTOM"]} value={s.llmModelMode} onChange={(v) => set({ llmModelMode: v })} />
+            <Seg
+              options={["GROK-4.5", "CUSTOM"]}
+              value={custom ? "CUSTOM" : "GROK-4.5"}
+              onChange={(v) => onChangeField({ llmModel: v === "CUSTOM" ? "" : DEFAULT_MODEL })}
+            />
           </Row>
-          {s.llmModelMode === "CUSTOM" && (
+          {custom && (
             <Row title="自定义模型" hint="模型 ID,按网关支持填写">
               <Input
-                value={s.llmModelCustom}
-                onChange={(e) => set({ llmModelCustom: e.target.value })}
-                placeholder="model-id" style={{ width: 264 }} aria-label="自定义模型 ID"
+                defaultValue={view.llmModel}
+                placeholder="model-id"
+                onBlur={(e) => onChangeField({ llmModel: e.target.value.trim() || DEFAULT_MODEL })}
+                style={{ width: 264 }}
+                aria-label="自定义模型 ID"
               />
             </Row>
           )}
-          <Row title="笔记输出目录" hint="每集一个 Markdown + JSON,可指向你的笔记库">
+          <Row title="笔记导出目录" hint="额外导出一份 Markdown 到你的笔记库(可选)">
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
               <span style={{
                 fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
-                letterSpacing: "var(--tracking-machine)", color: "var(--ink)",
-                maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>{s.notesDir}</span>
+                letterSpacing: "var(--tracking-machine)", color: view.notesDir ? "var(--ink)" : "var(--scale)",
+                maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl",
+              }}>{view.notesDir || "未设置"}</span>
               <Button variant="secondary" size="sm" onClick={onChooseDir}>CHOOSE</Button>
             </div>
           </Row>
