@@ -157,7 +157,7 @@ export function Settings({
           padding: "8px 24px", boxSizing: "border-box", display: "flex", flexDirection: "column",
         }}>
           <Row title={<><span>百炼 API Key</span><StatusLabel tone={view.asrKeySet ? "ready" : "dim"}>{view.asrKeySet ? "已保存" : "未设置"}</StatusLabel></>}
-            hint="转写服务密钥,只存在本机钥匙串">
+            hint="转写服务密钥,只存在本机">
             <KeyInput saved={view.asrKeySet} label="百炼 API Key" onSave={(v) => onSaveKeys({ asrKey: v })} />
           </Row>
           <Row title="百炼 API 地址" hint="转写服务网关,清空恢复默认">
@@ -165,7 +165,7 @@ export function Settings({
               onSave={(v) => onChangeField({ asrHost: v })} label="百炼 API 地址" />
           </Row>
           <Row title={<><span>LLM API Key</span><StatusLabel tone={view.llmKeySet ? "ready" : "dim"}>{view.llmKeySet ? "已保存" : "未设置"}</StatusLabel></>}
-            hint="笔记生成密钥,只存在本机钥匙串">
+            hint="笔记生成密钥,只存在本机">
             <KeyInput saved={view.llmKeySet} label="LLM API Key" onSave={(v) => onSaveKeys({ llmKey: v })} />
           </Row>
           <Row title="LLM 网关地址" hint="OpenAI Responses 协议,清空恢复默认">

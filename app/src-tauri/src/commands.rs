@@ -53,74 +53,28 @@ impl Default for Settings {
     }
 }
 
-#[cfg(not(debug_assertions))]
-const KEYCHAIN_SERVICE: &str = "Podnote";
-#[cfg(not(debug_assertions))]
-const KEY_ASR: &str = "bailian-api-key";
-#[cfg(not(debug_assertions))]
-const KEY_LLM: &str = "llm-api-key";
-
-#[cfg(not(debug_assertions))]
-fn keychain_get(user: &str) -> Option<String> {
-    keyring::Entry::new(KEYCHAIN_SERVICE, user)
-        .ok()?
-        .get_password()
-        .ok()
-        .filter(|s| !s.is_empty())
-}
-#[cfg(not(debug_assertions))]
-fn keychain_set(user: &str, value: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, user).map_err(|e| e.to_string())?;
-    if value.is_empty() {
-        let _ = entry.delete_credential();
-        Ok(())
-    } else {
-        entry.set_password(value).map_err(|e| e.to_string())
-    }
-}
-
-/// 启动时读一次密钥。release 走钥匙串;debug 走数据目录 keys.json
-/// (dev 二进制每次重编译签名都变,钥匙串会每次弹授权框,开发体验不可用)
+/// 启动时读一次密钥。存 app 数据目录 keys.json(明文)——自用取舍:
+/// 无签名证书时钥匙串授权随每次打包失效,启动反复弹密码框不可用
 pub fn keys_load(lib: &Library) -> (String, String) {
-    #[cfg(debug_assertions)]
-    {
-        let v: Option<serde_json::Value> = fs::read_to_string(lib.root.join("keys.json"))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok());
-        let get = |k: &str| {
-            v.as_ref()
-                .and_then(|v| v.get(k).and_then(|x| x.as_str()))
-                .unwrap_or("")
-                .to_string()
-        };
-        (get("asrKey"), get("llmKey"))
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        let _ = lib;
-        (
-            keychain_get(KEY_ASR).unwrap_or_default(),
-            keychain_get(KEY_LLM).unwrap_or_default(),
-        )
-    }
+    let v: Option<serde_json::Value> = fs::read_to_string(lib.root.join("keys.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok());
+    let get = |k: &str| {
+        v.as_ref()
+            .and_then(|v| v.get(k).and_then(|x| x.as_str()))
+            .unwrap_or("")
+            .to_string()
+    };
+    (get("asrKey"), get("llmKey"))
 }
 
 fn keys_save(lib: &Library, asr: &str, llm: &str) -> Result<(), String> {
-    #[cfg(debug_assertions)]
-    {
-        fs::write(
-            lib.root.join("keys.json"),
-            serde_json::to_string_pretty(&serde_json::json!({ "asrKey": asr, "llmKey": llm }))
-                .map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        let _ = lib;
-        keychain_set(KEY_ASR, asr)?;
-        keychain_set(KEY_LLM, llm)
-    }
+    fs::write(
+        lib.root.join("keys.json"),
+        serde_json::to_string_pretty(&serde_json::json!({ "asrKey": asr, "llmKey": llm }))
+            .map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 fn settings_path(lib: &Library) -> std::path::PathBuf {
