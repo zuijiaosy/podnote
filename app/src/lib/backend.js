@@ -1,10 +1,21 @@
-// backend — Tauri 命令与事件的前端桥;浏览器环境(设计评审模式)时 inTauri=false
+// backend — Tauri 命令与事件的前端桥
+// 浏览器环境:默认设计评审模式(DemoApp);带 ?mock=1 时为模拟实况模式(LiveApp + 内存假后端,自测用)
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { mockApi } from "./mock.js";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+export const mockMode =
+  !inTauri && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("mock");
 
-export const api = {
+/** 本地文件路径 → <audio> 可用的 URL(Tauri 走 asset 协议;mock 模式下路径本身就是 blob URL) */
+export async function toMediaUrl(path) {
+  if (!inTauri) return path;
+  const { convertFileSrc } = await import("@tauri-apps/api/core");
+  return convertFileSrc(path);
+}
+
+const realApi = {
   getLibrary: () => invoke("get_library"),
   getNote: (id) => invoke("get_note", { id }),
   getNoteMarkdown: (id) => invoke("get_note_markdown", { id }),
@@ -38,6 +49,8 @@ export const api = {
   /** 朗读合成进度 {id, status, done, total, detail} */
   onTtsProgress: (cb) => listen("tts-progress", (e) => cb(e.payload)),
 };
+
+export const api = mockMode ? mockApi : realApi;
 
 /** 后端状态 → 组件四态 */
 export function uiStatus(status) {

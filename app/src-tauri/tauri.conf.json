@@ -23,7 +23,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/audio/**"]
+        "scope": ["$APPDATA/audio/**", "$APPDATA/tts/**"]
       }
     }
   },

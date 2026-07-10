@@ -6,7 +6,7 @@ import { Empty } from "./screens/Empty.jsx";
 import { AddFlow } from "./screens/AddFlow.jsx";
 import { Settings } from "./screens/Settings.jsx";
 import { DemoApp } from "./screens/DemoApp.jsx";
-import { inTauri, api, uiStatus, uiStatusLabel, STAGE_ZH } from "./lib/backend.js";
+import { inTauri, mockMode, api, toMediaUrl, uiStatus, uiStatusLabel, STAGE_ZH } from "./lib/backend.js";
 import { extractPeaks } from "./lib/audio.js";
 import { fmt } from "./lib/format.js";
 
@@ -163,12 +163,11 @@ function LiveApp() {
   const loadTts = useCallback(async (id) => {
     const got = await api.getTts(id);
     if (!got) return null;
-    const { convertFileSrc } = await import("@tauri-apps/api/core");
     const info = {
       complete: got.complete,
-      segments: got.segments.map((s) => ({
-        seq: s.seq, key: s.key, url: s.path ? convertFileSrc(s.path) : null,
-      })),
+      segments: await Promise.all(got.segments.map(async (s) => ({
+        seq: s.seq, key: s.key, url: s.path ? await toMediaUrl(s.path) : null,
+      }))),
     };
     setTtsInfo((m) => ({ ...m, [id]: info }));
     return info;
@@ -205,8 +204,7 @@ function LiveApp() {
       if (p.status === "processing") {
         setTtsGen((m) => ({ ...m, [p.id]: { done: p.done, total: p.total } }));
       } else if (p.status === "segment") {
-        const { convertFileSrc } = await import("@tauri-apps/api/core");
-        const url = convertFileSrc(p.path);
+        const url = await toMediaUrl(p.path);
         setTtsInfo((m) => {
           const cur = m[p.id] ?? { complete: false, segments: [] };
           const segments = [...cur.segments];
@@ -242,8 +240,8 @@ function LiveApp() {
       a?.pause();
       return;
     }
-    // 同一集暂停后再点:原地续播
-    if (ttsEpId === ep.id && a?.dataset.epid === ep.id && a.src) {
+    // 同一集暂停后再点:原地续播(已播完则走下面的从头重放)
+    if (ttsEpId === ep.id && a?.dataset.epid === ep.id && a.src && !a.ended && ttsIdx >= 0) {
       audioRef.current?.pause();
       a.play().then(() => { a.playbackRate = ttsRateRef.current; }).catch(() => {});
       return;
@@ -299,8 +297,7 @@ function LiveApp() {
 
   // ===== 真实播放引擎:<audio> + asset 协议 + Web Audio 波形峰值 =====
   const registerAudio = useCallback(async (id, path) => {
-    const { convertFileSrc } = await import("@tauri-apps/api/core");
-    const url = convertFileSrc(path);
+    const url = await toMediaUrl(path);
     setAudioInfo((m) => ({ ...m, [id]: { url, peaks: m[id]?.peaks ?? null } }));
     extractPeaks(url)
       .then((peaks) => setAudioInfo((m) => ({ ...m, [id]: { ...(m[id] ?? { url }), peaks } })))
@@ -447,6 +444,7 @@ function LiveApp() {
     refreshSettings();
   };
   const chooseDir = async () => {
+    if (!inTauri) return saveSettings({ notesDir: "/mock/笔记库" }); // mock 模式没有原生对话框
     const { open } = await import("@tauri-apps/plugin-dialog");
     const dir = await open({ directory: true });
     if (dir) saveSettings({ notesDir: dir });
@@ -545,6 +543,18 @@ function LiveApp() {
         style={{ display: "none" }}
         onPlay={(e) => { setTtsPlaying(true); e.currentTarget.playbackRate = ttsRateRef.current; }}
         onLoadedMetadata={(e) => { e.currentTarget.playbackRate = ttsRateRef.current; }}
+        onError={(e) => {
+          // 音频加载/解码失败(如 asset 协议拦截):显式亮错,不静默装死
+          const id = e.currentTarget.dataset.epid;
+          if (!id) return;
+          e.currentTarget.removeAttribute("src");
+          delete e.currentTarget.dataset.epid;
+          ttsWantRef.current = null;
+          setTtsWaiting(false);
+          setTtsPlaying(false);
+          setTtsIdx(-1);
+          setTtsGen((m) => ({ ...m, [id]: { error: "朗读音频加载失败" } }));
+        }}
         onPause={() => setTtsPlaying(false)}
         onEnded={(e) => {
           // 一段播完接下一段;还没落盘就挂起等 segment 事件
@@ -589,5 +599,6 @@ function LiveApp() {
 }
 
 export default function App() {
-  return inTauri ? <LiveApp /> : <DemoApp />;
+  // 浏览器 + ?mock=1:LiveApp 跑内存假后端,全流程交互自测
+  return inTauri || mockMode ? <LiveApp /> : <DemoApp />;
 }

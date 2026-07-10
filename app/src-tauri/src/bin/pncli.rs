@@ -1,8 +1,11 @@
-// pncli — Rust 管线的命令行验证入口(P1 验收用,与 Node CLI 产物对拍)
-// 用法(在仓库根目录): cargo run --manifest-path app/src-tauri/Cargo.toml --bin pncli -- <小宇宙链接>
+// pncli — Rust 管线的命令行验证入口(自测用,不开 GUI 直接实测各功能)
+// 用法(在仓库根目录,cargo run --manifest-path app/src-tauri/Cargo.toml --bin pncli --):
+//   pncli <小宇宙单集链接>          完整管线:解析 → 转写 → 笔记
+//   pncli feed <节目链接|pid>       节目页解析:列出最新单集(订阅轮询的数据源)
+//   pncli tts <note.json> [voice]   朗读合成:分段调 qwen3-tts-flash,产物写 ./tts-out/
 // 复用仓库根 data/<slug>.asr.json 缓存与 notes/ 输出约定
-use anyhow::{Context, Result};
-use app_lib::pipeline::{asr, note, resolve, summarize};
+use anyhow::{bail, Context, Result};
+use app_lib::pipeline::{asr, note, resolve, summarize, tts};
 use std::fs;
 use std::path::Path;
 
@@ -14,9 +17,78 @@ fn slugify(title: &str) -> String {
     s.trim_matches('-').chars().take(60).collect()
 }
 
+/// pncli feed <节目链接|pid> — 实测节目页解析(订阅轮询的脆弱点)
+async fn cmd_feed(arg: Option<&String>) -> Result<()> {
+    let arg = arg.context("用法: pncli feed <节目链接|pid>")?;
+    let pid = resolve::podcast_pid_from_url(arg).unwrap_or_else(|| arg.clone());
+    let client = reqwest::Client::new();
+    let feed = resolve::resolve_podcast(&client, &pid).await?;
+    println!("节目: {} (pid {})", feed.title, feed.pid);
+    for e in &feed.episodes {
+        println!(
+            "  {} | {} | {} | {}",
+            e.pub_date,
+            if e.playable { "可播" } else { "跳过" },
+            e.eid,
+            e.title
+        );
+    }
+    println!("共 {} 集", feed.episodes.len());
+    Ok(())
+}
+
+/// pncli tts <note.json> [voice] — 实测朗读合成,分段 WAV 写 ./tts-out/
+async fn cmd_tts(path: Option<&String>, voice: Option<&String>) -> Result<()> {
+    let path = path.context("用法: pncli tts <note.json> [voice]")?;
+    let api_key = std::env::var("BAILIAN_API_KEY")
+        .or_else(|_| std::env::var("DASHSCOPE_API_KEY"))
+        .context("需要 BAILIAN_API_KEY")?;
+    let voice = voice.map(String::as_str).unwrap_or(tts::DEFAULT_VOICE);
+    let doc: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    // 兼容 {meta, note} 包装和裸 note 两种形态
+    let note_obj = doc.get("note").unwrap_or(&doc);
+    let segs = tts::note_segments(note_obj);
+    if segs.is_empty() {
+        bail!("笔记里没有可朗读的内容");
+    }
+    fs::create_dir_all("tts-out")?;
+    let client = reqwest::Client::new();
+    let started = std::time::Instant::now();
+    for (i, (key, text)) in segs.iter().enumerate() {
+        let t0 = std::time::Instant::now();
+        let mut pcm: Vec<u8> = Vec::new();
+        let mut fmt = None;
+        for chunk in tts::split_text(text) {
+            let wav = tts::synth(&client, &api_key, voice, &chunk).await?;
+            let p = tts::parse_wav(&wav)?;
+            fmt.get_or_insert((p.sample_rate, p.channels, p.bits));
+            pcm.extend_from_slice(&p.data);
+        }
+        let (sr, ch, bits) = fmt.unwrap();
+        let out = format!("tts-out/{i:03}-{key}.wav");
+        fs::write(&out, tts::write_wav(sr, ch, bits, &pcm))?;
+        let dur = pcm.len() as f64 / (sr as f64 * ch as f64 * bits as f64 / 8.0);
+        println!(
+            "[{}/{}] {key} {} 字 → {dur:.1}s 音频,耗时 {:.1}s → {out}",
+            i + 1,
+            segs.len(),
+            text.chars().count(),
+            t0.elapsed().as_secs_f64()
+        );
+    }
+    println!("✅ {} 段完成,总耗时 {:.1}s", segs.len(), started.elapsed().as_secs_f64());
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let url = std::env::args().nth(1).context("用法: pncli <小宇宙单集链接>")?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        Some("feed") => return cmd_feed(args.get(1)).await,
+        Some("tts") => return cmd_tts(args.get(1), args.get(2)).await,
+        _ => {}
+    }
+    let url = args.into_iter().next().context("用法: pncli <单集链接> | feed <节目链接> | tts <note.json>")?;
     let asr_key = std::env::var("BAILIAN_API_KEY")
         .or_else(|_| std::env::var("DASHSCOPE_API_KEY"))
         .unwrap_or_default();
