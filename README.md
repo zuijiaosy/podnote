@@ -36,7 +36,7 @@ node src/index.mjs https://www.xiaoyuzhoufm.com/episode/69e669001e94ae6921be04dc
 产物:
 
 - `data/` — 音频、wav、srt 转写稿(带时间戳)
-- `notes/` — 最终 Markdown 笔记
+- `notes/` — 每集两个文件:`.md` 给人读,`.json` 结构化数据(tldr/points/quotes/resources/questions,时间戳带秒数,schema 与设计稿 view-model 对齐,将来直接喂给 Tauri 前端)
 
 每一步产物落盘、重跑自动跳过,所以调 prompt 时重跑只花 LLM 那一步的钱和时间。
 

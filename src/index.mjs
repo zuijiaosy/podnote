@@ -13,6 +13,7 @@ import {
   audioPathFor,
 } from "./transcribe.mjs";
 import { summarize } from "./summarize.mjs";
+import { noteToMarkdown } from "./note.mjs";
 
 const DATA_DIR = "data";
 const NOTES_DIR = process.env.NOTES_DIR || "notes";
@@ -41,11 +42,38 @@ const wavPath = toWav(audioPath);
 const srt = transcribe(wavPath);
 
 console.log("== 4/4 生成笔记 ==\n");
-const note = await summarize({ meta, srt });
+const slug = slugify(meta.title);
+let note;
+try {
+  note = await summarize({ meta, srt });
+} catch (e) {
+  if (e.raw) {
+    const rawPath = path.join(NOTES_DIR, slug + ".raw.txt");
+    writeFileSync(rawPath, e.raw);
+    console.error(`\n${e.message}\n原始输出已存到 ${rawPath},修好 prompt 后重跑即可(转写稿有缓存,只花 LLM 的钱)`);
+  }
+  throw e;
+}
 
-const notePath = path.join(NOTES_DIR, slugify(meta.title) + ".md");
+// 双产物:.json 给将来的 App(schema 与设计稿 view-model 对齐),.md 给现在的人读
+const jsonPath = path.join(NOTES_DIR, slug + ".json");
 writeFileSync(
-  notePath,
-  note + `\n\n---\n原始链接: ${meta.url}\n生成时间: ${new Date().toISOString()}\n`
+  jsonPath,
+  JSON.stringify(
+    {
+      meta: {
+        url: meta.url,
+        podcast: meta.podcast,
+        title: meta.title,
+        durationSec: meta.duration,
+        generatedAt: new Date().toISOString(),
+      },
+      note,
+    },
+    null,
+    2
+  )
 );
-console.log(`\n✅ 笔记已写入: ${notePath}`);
+const mdPath = path.join(NOTES_DIR, slug + ".md");
+writeFileSync(mdPath, noteToMarkdown(meta, note));
+console.log(`\n✅ 笔记已写入: ${mdPath}\n   数据文件: ${jsonPath}`);

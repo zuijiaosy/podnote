@@ -1,4 +1,4 @@
-// summarize.mjs — 转写稿 → 结构化 Markdown 笔记
+// summarize.mjs — 转写稿 → 结构化笔记 JSON (schema 见 note.mjs)
 // 走 Pi 底座 (@earendil-works/pi-agent-core + pi-ai)。
 // 注意: pi-ai 的 API 近期从全局函数迁移到了 createModels()/provider factory,
 // 旧的 getModel 等在 "@earendil-works/pi-ai/compat" 保留。如果下面的 import
@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Agent } from "@earendil-works/pi-agent-core";
 import { getModel } from "@earendil-works/pi-ai/compat";
+import { parseNote } from "./note.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MODEL_PROVIDER = process.env.PI_PROVIDER || "anthropic";
@@ -49,7 +50,7 @@ export async function summarize({ meta, srt }) {
   const agent = new Agent({
     initialState: {
       systemPrompt:
-        "你是一个中文播客笔记助手。只输出 Markdown 笔记本身,不要任何前言后语。",
+        "你是一个中文播客笔记助手。只输出一个合法的 JSON 对象,不要 Markdown 代码块,不要任何前言后语。",
       model: getModel(MODEL_PROVIDER, MODEL_ID),
     },
   });
@@ -67,5 +68,5 @@ export async function summarize({ meta, srt }) {
 
   await agent.prompt(prompt);
   process.stdout.write("\n");
-  return out;
+  return parseNote(out); // 解析失败会抛错,error.raw 带着原始输出
 }
