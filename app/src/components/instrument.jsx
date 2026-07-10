@@ -1,8 +1,8 @@
 // 设计系统·instrument 族 — 移植自「Podnote 正式设计 standalone.html」内嵌组件库
 import { useMemo, useState } from "react";
 
-/** 丝印状态词。等宽全大写,tone 控制墨色。 */
-export function StatusLabel({ children, tone = "default", size = "xs", style }) {
+/** 丝印状态词。tone 控制墨色;中文标签最低 12px(sm),纯 ASCII 丝印可用 xs。 */
+export function StatusLabel({ children, tone = "default", size = "sm", style }) {
   const color = {
     default: "var(--ink)", dim: "var(--scale)",
     signal: "var(--signal)", ready: "var(--ready)",
@@ -38,7 +38,7 @@ export function IndicatorLight({ status = "off", label, style }) {
       }} />
       {label && (
         <span style={{
-          fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+          fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
           fontWeight: "var(--weight-medium)",
           letterSpacing: "var(--tracking-machine)", textTransform: "uppercase",
           fontVariantNumeric: "tabular-nums",

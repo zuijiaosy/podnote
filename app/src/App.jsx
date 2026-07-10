@@ -164,6 +164,22 @@ function LiveApp() {
       .catch((e) => console.error("播放失败", e));
   };
 
+  // 回车/空格 = 播放/暂停(窗口激活、不在输入框/按钮/弹窗/设置页时)
+  const togglePlayRef = useRef(() => {});
+  useEffect(() => { togglePlayRef.current = togglePlay; });
+  useEffect(() => {
+    if (adding || view !== "notes") return;
+    const onKey = (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "BUTTON" || t.isContentEditable)) return;
+      e.preventDefault(); // 空格默认滚动页面
+      togglePlayRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [adding, view]);
+
   const seekFrac = (f) => {
     setPlayFrac(f);
     const a = audioRef.current;

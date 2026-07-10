@@ -13,13 +13,13 @@ export function Rack({ episodes, activeId, onSelect, onAdd, onSettings }) {
         <StatusLabel>PODNOTE</StatusLabel>
         <span style={{ flex: 1 }} />
         <span style={{
-          fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+          fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
           letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
           color: "var(--scale)",
         }}>{episodes.length} 盘磁带</span>
       </div>
       <div style={{ padding: "8px 16px", boxSizing: "border-box", width: "100%" }}>
-        <Button variant="secondary" size="sm" onClick={onAdd} style={{ width: "100%" }}>+ 添加剧集</Button>
+        <Button variant="secondary" size="md" onClick={onAdd} style={{ width: "100%" }}>+ 添加剧集</Button>
       </div>
       <div style={{
         flex: 1, minHeight: 0, overflow: "auto", padding: "4px 16px 16px",
@@ -44,7 +44,7 @@ export function Rack({ episodes, activeId, onSelect, onAdd, onSettings }) {
         ))}
       </div>
       <div style={{ borderTop: "1px solid var(--line-faint)", padding: 8, display: "flex", alignItems: "center" }}>
-        <Button variant="ghost" size="sm" onClick={onSettings}>设置</Button>
+        <Button variant="ghost" size="md" onClick={onSettings} style={{ width: "100%", textAlign: "left" }}>设置</Button>
       </div>
     </div>
   );

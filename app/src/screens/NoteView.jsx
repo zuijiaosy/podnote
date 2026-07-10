@@ -76,13 +76,13 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript }) 
     <button
       onClick={() => setTab(id)}
       style={{
-        fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+        fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
         fontWeight: "var(--weight-medium)",
-        letterSpacing: "var(--tracking-machine-wide)", textTransform: "uppercase",
+        letterSpacing: "var(--tracking-machine)",
         background: "transparent", border: "none",
-        borderBottom: tab === id ? "1px solid var(--ink)" : "1px solid transparent",
+        borderBottom: tab === id ? "2px solid var(--ink)" : "2px solid transparent",
         color: tab === id ? "var(--ink)" : "var(--scale)",
-        padding: "4px 8px 8px", cursor: "pointer",
+        padding: "6px 10px 10px", cursor: "pointer",
         transition: "color var(--dur) var(--ease), border-color var(--dur) var(--ease)",
       }}
     >{label}</button>
@@ -208,6 +208,26 @@ function Reader({ ep, playFrac, onSeekFrac }) {
   );
 }
 
+/** 走带图标:▶ 播放 / ⏸ 暂停(CSS 绘制,不引图标库) */
+function PlayGlyph() {
+  return (
+    <span style={{
+      width: 0, height: 0, borderStyle: "solid",
+      borderWidth: "8px 0 8px 13px",
+      borderColor: "transparent transparent transparent var(--ink)",
+      marginLeft: 3, // 三角形视觉居中补偿
+    }} />
+  );
+}
+function PauseGlyph() {
+  return (
+    <span style={{ display: "flex", gap: 4 }}>
+      <i style={{ display: "block", width: 4, height: 15, background: "var(--ink)" }} />
+      <i style={{ display: "block", width: 4, height: 15, background: "var(--ink)" }} />
+    </span>
+  );
+}
+
 function Player({ ep, playFrac, playing, speed, downloadPct, onTogglePlay, onSeekFrac, onCycleSpeed, bars }) {
   const anchors = ep.note ? ep.note.points.map((p) => p.t / ep.durationSec) : [];
   const downloading = downloadPct != null;
@@ -218,12 +238,19 @@ function Player({ ep, playFrac, playing, speed, downloadPct, onTogglePlay, onSee
       display: "flex", alignItems: "center", gap: 16,
     }}>
       <Button
-        variant="secondary" size="sm"
+        variant="secondary"
         onClick={downloading ? undefined : onTogglePlay}
-        style={{ flex: "none", width: 64, opacity: downloading ? 0.7 : 1 }}
+        style={{
+          flex: "none", width: 52, height: 40, padding: 0,
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          opacity: downloading ? 0.7 : 1,
+        }}
         aria-label={downloading ? "音频下载中" : playing ? "暂停" : "播放"}
+        title={playing ? "暂停(回车)" : "播放(回车)"}
       >
-        {downloading ? `${downloadPct}%` : playing ? "暂停" : "播放"}
+        {downloading
+          ? <span style={{ fontSize: "var(--text-xs)", fontVariantNumeric: "tabular-nums" }}>{downloadPct}%</span>
+          : playing ? <PauseGlyph /> : <PlayGlyph />}
       </Button>
       <span style={{
         fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
@@ -238,7 +265,15 @@ function Player({ ep, playFrac, playing, speed, downloadPct, onTogglePlay, onSee
         letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
         color: "var(--scale)", flex: "none",
       }}>{ep.duration}</span>
-      <Button variant="secondary" size="sm" onClick={onCycleSpeed} style={{ flex: "none", width: 56 }}>
+      <Button
+        variant="secondary" onClick={onCycleSpeed}
+        style={{
+          flex: "none", width: 60, height: 40, padding: 0,
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          fontSize: "var(--text-sm)",
+        }}
+        title="切换倍速"
+      >
         {speed.toFixed(1)}×
       </Button>
     </div>
