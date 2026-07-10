@@ -46,7 +46,8 @@ node src/index.mjs https://www.xiaoyuzhoufm.com/episode/69e669001e94ae6921be04dc
 |---|---|---|
 | `WHISPER_MODEL` | `models/ggml-large-v3.bin` | whisper 模型路径 |
 | `WHISPER_BIN` | `whisper-cli` | whisper.cpp 可执行文件 |
-| `PI_PROVIDER` / `PI_MODEL` | `anthropic` / `claude-sonnet-4-6` | 走 pi-ai 的模型选择,自建网关可按 pi 文档加自定义 provider (`~/.pi/agent/models.json`) |
+| `PI_PROVIDER` / `PI_MODEL` | `anthropic` / `claude-sonnet-4-6` | 走 pi-ai 的模型选择 |
+| `PI_BASE_URL` (或 `ANTHROPIC_BASE_URL`) | 官方地址 | 自定义 API 网关地址,key 仍走 `ANTHROPIC_API_KEY` |
 | `NOTES_DIR` | `notes` | 笔记输出目录,可直接指到你的笔记库 |
 
 ## 已知的脆弱点

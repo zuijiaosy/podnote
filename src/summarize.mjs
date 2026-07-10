@@ -16,6 +16,8 @@ import { parseNote } from "./note.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MODEL_PROVIDER = process.env.PI_PROVIDER || "anthropic";
 const MODEL_ID = process.env.PI_MODEL || "claude-sonnet-4-6";
+// 自定义网关:设 PI_BASE_URL(或 ANTHROPIC_BASE_URL)覆盖官方 API 地址,key 仍走 ANTHROPIC_API_KEY
+const BASE_URL = process.env.PI_BASE_URL || process.env.ANTHROPIC_BASE_URL || "";
 
 const promptTemplate = readFileSync(
   path.join(__dirname, "..", "prompts", "note.md"),
@@ -51,7 +53,9 @@ export async function summarize({ meta, srt }) {
     initialState: {
       systemPrompt:
         "你是一个中文播客笔记助手。只输出一个合法的 JSON 对象,不要 Markdown 代码块,不要任何前言后语。",
-      model: getModel(MODEL_PROVIDER, MODEL_ID),
+      model: BASE_URL
+        ? { ...getModel(MODEL_PROVIDER, MODEL_ID), baseUrl: BASE_URL }
+        : getModel(MODEL_PROVIDER, MODEL_ID),
     },
   });
 
