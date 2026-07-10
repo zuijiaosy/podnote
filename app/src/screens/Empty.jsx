@@ -11,17 +11,17 @@ export function Empty({ selfCheck = { asrKey: false, llmKey: false }, onAdd, onG
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 32,
     }}>
       <div style={{ display: "flex", gap: 24 }}>
-        <IndicatorLight status={selfCheck.asrKey ? "ready" : "error"} label="ASR KEY" />
-        <IndicatorLight status={selfCheck.llmKey ? "ready" : "error"} label="LLM KEY" />
+        <IndicatorLight status={selfCheck.asrKey ? "ready" : "error"} label="转写密钥" />
+        <IndicatorLight status={selfCheck.llmKey ? "ready" : "error"} label="笔记密钥" />
       </div>
       {allReady ? (
         <>
-          <Button variant="knob" size="lg" onClick={onAdd} aria-label="添加第一集">GO</Button>
+          <Button variant="knob" size="lg" onClick={onAdd} aria-label="添加第一集">开始</Button>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
             <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-lg)", color: "var(--ink)" }}>
               粘贴一个小宇宙链接,开始。
             </span>
-            <StatusLabel tone="dim">PASTE XIAOYUZHOU EPISODE URL</StatusLabel>
+            <StatusLabel tone="dim">支持小宇宙单集链接</StatusLabel>
           </div>
         </>
       ) : (
@@ -34,7 +34,7 @@ export function Empty({ selfCheck = { asrKey: false, llmKey: false }, onAdd, onG
               转写走阿里百炼,笔记走你的 LLM 网关。密钥只存在本机钥匙串。
             </span>
           </div>
-          <Button variant="secondary" onClick={onGoSettings}>GO TO SETTINGS</Button>
+          <Button variant="secondary" onClick={onGoSettings}>去设置</Button>
         </>
       )}
     </div>

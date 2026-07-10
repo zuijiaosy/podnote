@@ -22,10 +22,10 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <StatusLabel>ADD TAPE{act === "run" ? " · RUNNING" : ""}</StatusLabel>
-          {act === "error" && <StatusLabel tone="signal">· FAILED</StatusLabel>}
+          <StatusLabel>添加剧集{act === "run" ? " · 处理中" : ""}</StatusLabel>
+          {act === "error" && <StatusLabel tone="signal">· 失败</StatusLabel>}
           <span style={{ flex: 1 }} />
-          <Button variant="ghost" size="sm" onClick={onClose}>ESC</Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>关闭</Button>
         </div>
 
         {act === "input" && (
@@ -44,8 +44,8 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
               <span style={{
                 fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
                 letterSpacing: "var(--tracking-machine)", color: "var(--scale)",
-              }}>URL → CLOUD ASR</span>
-              <Button variant="knob" size="md" onClick={onStart} aria-label="开始处理">GO</Button>
+              }}>链接直传云端转写</span>
+              <Button variant="knob" size="md" onClick={onStart} aria-label="开始处理">开始</Button>
             </div>
           </>
         )}
@@ -78,7 +78,7 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
         {act === "error" && (
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "8px 0" }}>
-              <IndicatorLight status="error" label="RESOLVE FAILED" />
+              <IndicatorLight status="error" label="处理失败" />
               <div style={{
                 fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
                 color: "var(--ink)", lineHeight: "var(--leading-note)",
@@ -90,8 +90,8 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
               }}>{url}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
-              <Button variant="ghost" size="sm" onClick={onEditUrl}>EDIT URL</Button>
-              <Button variant="secondary" size="sm" onClick={onStart}>RETRY</Button>
+              <Button variant="ghost" size="sm" onClick={onEditUrl}>改链接</Button>
+              <Button variant="secondary" size="sm" onClick={onStart}>重试</Button>
             </div>
           </>
         )}

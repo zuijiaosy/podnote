@@ -97,8 +97,8 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript }) 
         flex: "none", display: "flex", gap: 8, padding: "12px 24px 0",
         borderBottom: "1px solid var(--line-faint)",
       }}>
-        {tabBtn("notes", "NOTES")}
-        {tabBtn("transcript", "TRANSCRIPT")}
+        {tabBtn("notes", "笔记")}
+        {tabBtn("transcript", "字幕")}
       </div>
       {tab === "notes" ? (
         <Reader ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} />
@@ -126,7 +126,7 @@ function Reader({ ep, playFrac, onSeekFrac }) {
           borderRadius: "var(--radius)", padding: "16px 24px",
           display: "flex", flexDirection: "column", gap: 8,
         }}>
-          <StatusLabel tone="dim">TL;DR</StatusLabel>
+          <StatusLabel tone="dim">一句话</StatusLabel>
           <span style={{
             fontFamily: "var(--font-sans)", fontSize: "var(--text-lg)",
             fontWeight: "var(--weight-medium)", color: "var(--ink)", lineHeight: 1.6,
@@ -223,7 +223,7 @@ function Player({ ep, playFrac, playing, speed, downloadPct, onTogglePlay, onSee
         style={{ flex: "none", width: 64, opacity: downloading ? 0.7 : 1 }}
         aria-label={downloading ? "音频下载中" : playing ? "暂停" : "播放"}
       >
-        {downloading ? `${downloadPct}%` : playing ? "PAUSE" : "PLAY"}
+        {downloading ? `${downloadPct}%` : playing ? "暂停" : "播放"}
       </Button>
       <span style={{
         fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
@@ -239,25 +239,27 @@ function Player({ ep, playFrac, playing, speed, downloadPct, onTogglePlay, onSee
         color: "var(--scale)", flex: "none",
       }}>{ep.duration}</span>
       <Button variant="secondary" size="sm" onClick={onCycleSpeed} style={{ flex: "none", width: 56 }}>
-        {speed.toFixed(1)}X
+        {speed.toFixed(1)}×
       </Button>
     </div>
   );
 }
 
-/** 非就绪态的右侧井:转写中 / 错误 / 排队 */
+const STAGE_ZH = { KEY: "密钥", RESOLVE: "解析", TRANSCRIBE: "转写", SUMMARIZE: "生成笔记" };
+
+/** 非就绪态的右侧井:处理中 / 错误 / 排队 */
 function StateWell({ ep, onRetry, onGoSettings }) {
   if (ep.status === "processing") {
     return (
       <Center>
-        <IndicatorLight status="processing" label={ep.statusLabel || "WORKING"} />
+        <IndicatorLight status="processing" label={ep.statusLabel || "运行中"} />
         {ep.elapsed && (
           <div style={{
             fontFamily: "var(--font-mono)", fontSize: "var(--text-xl)",
             letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums", color: "var(--ink)",
           }}>{ep.elapsed}</div>
         )}
-        <Hint>云端转写中,通常需要几分钟。完成后笔记出现在这里。</Hint>
+        <Hint>云端处理中,通常需要几分钟。完成后笔记出现在这里。</Hint>
       </Center>
     );
   }
@@ -265,20 +267,20 @@ function StateWell({ ep, onRetry, onGoSettings }) {
     const needsKey = ep.errStage === "KEY";
     return (
       <Center>
-        <IndicatorLight status="error" label={`${ep.errStage || "PIPELINE"} FAILED`} />
+        <IndicatorLight status="error" label={`${STAGE_ZH[ep.errStage] ?? "管线"}失败`} />
         <Hint ink>{ep.errReason}</Hint>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
           {needsKey
-            ? <Button variant="secondary" size="sm" onClick={onGoSettings}>GO TO SETTINGS</Button>
-            : <Button variant="secondary" size="sm" onClick={onRetry}>RETRY</Button>}
+            ? <Button variant="secondary" size="sm" onClick={onGoSettings}>去设置</Button>
+            : <Button variant="secondary" size="sm" onClick={onRetry}>重试</Button>}
         </div>
       </Center>
     );
   }
   return (
     <Center>
-      <IndicatorLight status="off" label="QUEUED" />
-      <Hint>排在第 {ep.queuePos ?? 1} 位。前面的磁带处理完成后自动开始。</Hint>
+      <IndicatorLight status="off" label="排队中" />
+      <Hint>排在队列里,前面的磁带处理完成后自动开始。</Hint>
     </Center>
   );
 }

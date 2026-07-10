@@ -472,7 +472,7 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
 
     // --- TRANSCRIBE(缓存命中即跳过) ---
     let asr_result: serde_json::Value = if asr_path.exists() {
-        emit(&app, &id, "TRANSCRIBE", "ready", "CACHED");
+        emit(&app, &id, "TRANSCRIBE", "ready", "缓存命中");
         match fs::read_to_string(&asr_path).ok().and_then(|s| serde_json::from_str(&s).ok()) {
             Some(v) => v,
             None => return fail(&app, &id, "TRANSCRIBE", "转写缓存损坏,请删除后重试"),
@@ -508,7 +508,7 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
     let app3 = app.clone();
     let id3 = id.clone();
     let progress = move |chars: usize| {
-        emit(&app3, &id3, "SUMMARIZE", "processing", &format!("{chars} CHARS"));
+        emit(&app3, &id3, "SUMMARIZE", "processing", &format!("{chars} 字"));
     };
     let parsed = match summarize::summarize(&client, &llm, &meta, &timed, &progress).await {
         Ok(n) => n,

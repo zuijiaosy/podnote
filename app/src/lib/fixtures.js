@@ -22,7 +22,7 @@ export const EPISODES = [
   {
     id: "e2", show: "声动早咖啡", title: "AI 会取代播客剪辑师吗",
     date: "07-08", durationSec: 1451, duration: "24:11",
-    status: "processing", statusLabel: "TRANSCRIBING", elapsed: "04:37",
+    status: "processing", statusLabel: "转写中", elapsed: "04:37",
     note: null,
   },
   fromNote("e3", ep143, "07-02"),
@@ -36,7 +36,7 @@ export const EPISODES = [
   {
     id: "e5", show: "疯投圈", title: "茶饮出海:蜜雪冰城在东南亚学到了什么",
     date: "06-21", durationSec: 4210, duration: "1:10:10",
-    status: "off", statusLabel: "QUEUED", queuePos: 1,
+    status: "off", statusLabel: "排队中", queuePos: 1,
     note: null,
   },
 ];

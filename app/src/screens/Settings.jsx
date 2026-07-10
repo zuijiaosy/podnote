@@ -27,32 +27,6 @@ function Row({ title, hint, children, last }) {
   );
 }
 
-function Seg({ options, value, onChange }) {
-  return (
-    <span style={{ display: "inline-flex", gap: 4, flex: "none" }}>
-      {options.map((o) => {
-        const on = o === value;
-        return (
-          <button
-            key={o}
-            onClick={() => onChange?.(o)}
-            style={{
-              fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
-              fontWeight: "var(--weight-medium)",
-              letterSpacing: "var(--tracking-machine)", textTransform: "uppercase",
-              background: on ? "var(--ink)" : "transparent",
-              color: on ? "var(--panel)" : "var(--scale)",
-              border: `1px solid ${on ? "var(--ink)" : "var(--line-soft)"}`,
-              borderRadius: "var(--radius-sm)", padding: "4px 8px", cursor: "pointer",
-              transition: "background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease)",
-            }}
-          >{o}</button>
-        );
-      })}
-    </span>
-  );
-}
-
 function KeyInput({ saved, onSave, label }) {
   const [val, setVal] = useState("");
   return (
@@ -68,10 +42,30 @@ function KeyInput({ saved, onSave, label }) {
   );
 }
 
-const DEFAULT_MODEL = "grok-4.5";
+/** 文本配置项:失焦即存;清空回落默认值 */
+function TextField({ value, fallback, onSave, label, width = 264 }) {
+  return (
+    <Input
+      key={value}
+      defaultValue={value}
+      placeholder={fallback}
+      onBlur={(e) => {
+        const v = e.target.value.trim() || fallback;
+        if (v !== value) onSave(v);
+      }}
+      style={{ width }}
+      aria-label={label}
+    />
+  );
+}
+
+const DEFAULTS = {
+  asrHost: "https://llm-xy8sn8964kplkx1s.cn-beijing.maas.aliyuncs.com",
+  llmBaseUrl: "https://api.codexzh.com/v1",
+  llmModel: "grok-4.5",
+};
 
 export function Settings({ view, onChangeField, onSaveKeys, onChooseDir, onBack }) {
-  const custom = view.llmModel !== DEFAULT_MODEL;
   return (
     <div style={{
       flex: 1, minWidth: 0, overflow: "auto",
@@ -79,40 +73,34 @@ export function Settings({ view, onChangeField, onSaveKeys, onChooseDir, onBack 
     }}>
       <div style={{ width: 560, display: "flex", flexDirection: "column", gap: 16, height: "fit-content" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <StatusLabel>SETTINGS</StatusLabel>
+          <StatusLabel>设置</StatusLabel>
           <span style={{ flex: 1 }} />
-          <Button variant="ghost" size="sm" onClick={onBack}>BACK</Button>
+          <Button variant="ghost" size="sm" onClick={onBack}>返回</Button>
         </div>
         <div style={{
           background: "var(--well)", borderRadius: "var(--radius)",
           padding: "8px 24px", boxSizing: "border-box", display: "flex", flexDirection: "column",
         }}>
-          <Row title={<><span>百炼 API Key</span><StatusLabel tone={view.asrKeySet ? "ready" : "dim"}>{view.asrKeySet ? "SET" : "EMPTY"}</StatusLabel></>}
+          <Row title={<><span>百炼 API Key</span><StatusLabel tone={view.asrKeySet ? "ready" : "dim"}>{view.asrKeySet ? "已保存" : "未设置"}</StatusLabel></>}
             hint="转写服务密钥,只存在本机钥匙串">
             <KeyInput saved={view.asrKeySet} label="百炼 API Key" onSave={(v) => onSaveKeys({ asrKey: v })} />
           </Row>
-          <Row title={<><span>LLM API Key</span><StatusLabel tone={view.llmKeySet ? "ready" : "dim"}>{view.llmKeySet ? "SET" : "EMPTY"}</StatusLabel></>}
+          <Row title="百炼 API 地址" hint="转写服务网关,清空恢复默认">
+            <TextField value={view.asrHost} fallback={DEFAULTS.asrHost}
+              onSave={(v) => onChangeField({ asrHost: v })} label="百炼 API 地址" />
+          </Row>
+          <Row title={<><span>LLM API Key</span><StatusLabel tone={view.llmKeySet ? "ready" : "dim"}>{view.llmKeySet ? "已保存" : "未设置"}</StatusLabel></>}
             hint="笔记生成密钥,只存在本机钥匙串">
             <KeyInput saved={view.llmKeySet} label="LLM API Key" onSave={(v) => onSaveKeys({ llmKey: v })} />
           </Row>
-          <Row title="笔记模型" hint="经你的 LLM 网关调用">
-            <Seg
-              options={["GROK-4.5", "CUSTOM"]}
-              value={custom ? "CUSTOM" : "GROK-4.5"}
-              onChange={(v) => onChangeField({ llmModel: v === "CUSTOM" ? "" : DEFAULT_MODEL })}
-            />
+          <Row title="LLM 网关地址" hint="OpenAI Responses 协议,清空恢复默认">
+            <TextField value={view.llmBaseUrl} fallback={DEFAULTS.llmBaseUrl}
+              onSave={(v) => onChangeField({ llmBaseUrl: v })} label="LLM 网关地址" />
           </Row>
-          {custom && (
-            <Row title="自定义模型" hint="模型 ID,按网关支持填写">
-              <Input
-                defaultValue={view.llmModel}
-                placeholder="model-id"
-                onBlur={(e) => onChangeField({ llmModel: e.target.value.trim() || DEFAULT_MODEL })}
-                style={{ width: 264 }}
-                aria-label="自定义模型 ID"
-              />
-            </Row>
-          )}
+          <Row title="笔记模型" hint="模型 ID,按网关支持填写,清空恢复默认">
+            <TextField value={view.llmModel} fallback={DEFAULTS.llmModel}
+              onSave={(v) => onChangeField({ llmModel: v })} label="笔记模型" width={200} />
+          </Row>
           <Row title="笔记导出目录" hint="额外导出一份 Markdown 到你的笔记库(可选)">
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
               <span style={{
@@ -120,7 +108,7 @@ export function Settings({ view, onChangeField, onSaveKeys, onChooseDir, onBack 
                 letterSpacing: "var(--tracking-machine)", color: view.notesDir ? "var(--ink)" : "var(--scale)",
                 maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl",
               }}>{view.notesDir || "未设置"}</span>
-              <Button variant="secondary" size="sm" onClick={onChooseDir}>CHOOSE</Button>
+              <Button variant="secondary" size="sm" onClick={onChooseDir}>选择</Button>
             </div>
           </Row>
           <Row

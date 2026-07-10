@@ -6,7 +6,7 @@ import { Empty } from "./screens/Empty.jsx";
 import { AddFlow } from "./screens/AddFlow.jsx";
 import { Settings } from "./screens/Settings.jsx";
 import { DemoApp } from "./screens/DemoApp.jsx";
-import { inTauri, api, uiStatus, uiStatusLabel } from "./lib/backend.js";
+import { inTauri, api, uiStatus, uiStatusLabel, STAGE_ZH } from "./lib/backend.js";
 import { extractPeaks } from "./lib/audio.js";
 import { fmt } from "./lib/format.js";
 
@@ -31,6 +31,7 @@ function LiveApp() {
   const [dlPct, setDlPct] = useState(null);
   const [transcripts, setTranscripts] = useState({}); // id -> sentences[]
   const audioRef = useRef(null);
+  const speedRef = useRef(1); // WebKit 在 play() 时会重置 playbackRate,须在开始播放后补设
 
   const refresh = useCallback(async () => {
     const recs = await api.getLibrary();
@@ -158,8 +159,9 @@ function LiveApp() {
       a.dataset.epid = ep.id;
       a.currentTime = playFrac * ep.durationSec;
     }
-    a.playbackRate = speed;
-    a.play().catch((e) => console.error("播放失败", e));
+    a.play()
+      .then(() => { a.playbackRate = speedRef.current; })
+      .catch((e) => console.error("播放失败", e));
   };
 
   const seekFrac = (f) => {
@@ -173,13 +175,18 @@ function LiveApp() {
   const cycleSpeed = () => {
     const next = { 1: 1.5, 1.5: 2, 2: 1 }[speed];
     setSpeed(next);
-    if (audioRef.current) audioRef.current.playbackRate = next;
+    speedRef.current = next;
+    const a = audioRef.current;
+    if (a) {
+      a.defaultPlaybackRate = next;
+      a.playbackRate = next;
+    }
   };
 
   const addStages = useMemo(() => {
     const st = stageMap[addingIdRef.current] ?? {};
     return STAGE_ORDER.map((s) => ({
-      label: s,
+      label: STAGE_ZH[s] ?? s,
       status: st[s]?.status === "processing" ? "processing"
         : st[s]?.status === "ready" ? "ready"
         : st[s]?.status === "error" ? "error" : "off",
@@ -286,7 +293,8 @@ function LiveApp() {
       <audio
         ref={audioRef}
         style={{ display: "none" }}
-        onPlay={() => setPlaying(true)}
+        onPlay={(e) => { setPlaying(true); e.currentTarget.playbackRate = speedRef.current; }}
+        onLoadedMetadata={(e) => { e.currentTarget.playbackRate = speedRef.current; }}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
         onTimeUpdate={(e) => {

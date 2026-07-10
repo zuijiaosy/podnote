@@ -29,7 +29,7 @@ export function Transcript({ sentences, speakers, playSec, onSeekSec }) {
         <span style={{
           fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
           letterSpacing: "var(--tracking-machine-wide)", color: "var(--scale)",
-        }}>LOADING…</span>
+        }}>加载中…</span>
       </div>
     );
   }
@@ -48,7 +48,7 @@ export function Transcript({ sentences, speakers, playSec, onSeekSec }) {
             border: "none", borderRadius: "var(--radius-sm)",
             padding: "4px 10px", cursor: "pointer",
           }}
-        >◉ FOLLOW</button>
+        >◉ 跟随播放</button>
       )}
       <div
         onWheel={() => setFollow(false)}

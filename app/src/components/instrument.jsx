@@ -80,7 +80,7 @@ export function EpisodeItem({
   active = false, errReason, onClick, style,
 }) {
   const [hover, setHover] = useState(false);
-  const defaultLabel = { off: "QUEUED", processing: "WORKING", ready: "READY", error: "ERROR" }[status];
+  const defaultLabel = { off: "排队中", processing: "运行中", ready: "就绪", error: "出错" }[status];
   return (
     <div
       role="button" tabIndex={0}

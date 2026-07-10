@@ -35,11 +35,20 @@ export function uiStatus(status) {
 
 export function uiStatusLabel(status) {
   return {
-    queued: "QUEUED",
-    resolving: "RESOLVING",
-    transcribing: "TRANSCRIBING",
-    summarizing: "SUMMARIZING",
-    ready: "READY",
-    error: "ERROR",
-  }[status] ?? status.toUpperCase();
+    queued: "排队中",
+    resolving: "解析中",
+    transcribing: "转写中",
+    summarizing: "生成笔记",
+    ready: "就绪",
+    error: "出错",
+  }[status] ?? status;
 }
+
+/** 管线阶段 key → 中文显示名(事件协议 key 保持英文) */
+export const STAGE_ZH = {
+  KEY: "密钥",
+  RESOLVE: "解析",
+  TRANSCRIBE: "转写",
+  SUMMARIZE: "生成笔记",
+  READY: "完成",
+};
