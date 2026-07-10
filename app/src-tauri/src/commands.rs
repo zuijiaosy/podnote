@@ -12,6 +12,9 @@ use crate::pipeline::{asr, note, resolve, summarize};
 pub struct AppState {
     pub lib: Mutex<Library>,
     pub client: reqwest::Client,
+    /// (asr_key, llm_key) 内存缓存:启动时读一次,运行期零钥匙串访问
+    /// (钥匙串弹窗会阻塞主线程;dev 构建每次重编译签名变化还会反复弹窗)
+    pub keys: Mutex<(String, String)>,
 }
 
 // ===== 设置(非敏感项存 settings.json;key 存 macOS 钥匙串) =====
@@ -40,6 +43,7 @@ const KEYCHAIN_SERVICE: &str = "Podnote";
 const KEY_ASR: &str = "bailian-api-key";
 const KEY_LLM: &str = "llm-api-key";
 
+#[cfg(not(debug_assertions))]
 fn keychain_get(user: &str) -> Option<String> {
     keyring::Entry::new(KEYCHAIN_SERVICE, user)
         .ok()?
@@ -47,14 +51,58 @@ fn keychain_get(user: &str) -> Option<String> {
         .ok()
         .filter(|s| !s.is_empty())
 }
+#[cfg(not(debug_assertions))]
 fn keychain_set(user: &str, value: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, user).map_err(|e| e.to_string());
-    let entry = entry?;
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, user).map_err(|e| e.to_string())?;
     if value.is_empty() {
         let _ = entry.delete_credential();
         Ok(())
     } else {
         entry.set_password(value).map_err(|e| e.to_string())
+    }
+}
+
+/// 启动时读一次密钥。release 走钥匙串;debug 走数据目录 keys.json
+/// (dev 二进制每次重编译签名都变,钥匙串会每次弹授权框,开发体验不可用)
+pub fn keys_load(lib: &Library) -> (String, String) {
+    #[cfg(debug_assertions)]
+    {
+        let v: Option<serde_json::Value> = fs::read_to_string(lib.root.join("keys.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok());
+        let get = |k: &str| {
+            v.as_ref()
+                .and_then(|v| v.get(k).and_then(|x| x.as_str()))
+                .unwrap_or("")
+                .to_string()
+        };
+        (get("asrKey"), get("llmKey"))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = lib;
+        (
+            keychain_get(KEY_ASR).unwrap_or_default(),
+            keychain_get(KEY_LLM).unwrap_or_default(),
+        )
+    }
+}
+
+fn keys_save(lib: &Library, asr: &str, llm: &str) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    {
+        fs::write(
+            lib.root.join("keys.json"),
+            serde_json::to_string_pretty(&serde_json::json!({ "asrKey": asr, "llmKey": llm }))
+                .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = lib;
+        keychain_set(KEY_ASR, asr)?;
+        keychain_set(KEY_LLM, llm)
     }
 }
 
@@ -80,10 +128,11 @@ pub struct SettingsView {
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> SettingsView {
     let lib = state.lib.lock().unwrap();
+    let keys = state.keys.lock().unwrap();
     SettingsView {
         settings: load_settings(&lib),
-        asr_key_set: keychain_get(KEY_ASR).is_some(),
-        llm_key_set: keychain_get(KEY_LLM).is_some(),
+        asr_key_set: !keys.0.is_empty(),
+        llm_key_set: !keys.1.is_empty(),
     }
 }
 
@@ -98,14 +147,23 @@ pub fn set_settings(state: State<AppState>, settings: Settings) -> Result<(), St
 }
 
 #[tauri::command]
-pub fn set_keys(asr_key: Option<String>, llm_key: Option<String>) -> Result<(), String> {
-    if let Some(k) = asr_key {
-        keychain_set(KEY_ASR, &k)?;
-    }
-    if let Some(k) = llm_key {
-        keychain_set(KEY_LLM, &k)?;
-    }
-    Ok(())
+pub async fn set_keys(
+    state: State<'_, AppState>,
+    asr_key: Option<String>,
+    llm_key: Option<String>,
+) -> Result<(), String> {
+    let (asr, llm) = {
+        let mut keys = state.keys.lock().unwrap();
+        if let Some(k) = asr_key {
+            keys.0 = k;
+        }
+        if let Some(k) = llm_key {
+            keys.1 = k;
+        }
+        keys.clone()
+    };
+    let lib = state.lib.lock().unwrap();
+    keys_save(&lib, &asr, &llm)
 }
 
 // ===== 库 =====
@@ -342,13 +400,16 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
         load_settings(&lib)
     };
 
-    // --- KEY 自检:缺 key 直接指向设置页,不空跑 ---
-    let llm_key = keychain_get(KEY_LLM).unwrap_or_default();
+    // --- KEY 自检:缺 key 直接指向设置页,不空跑(读内存缓存,零钥匙串访问) ---
+    let (asr_key, llm_key) = {
+        let state = app.state::<AppState>();
+        let keys = state.keys.lock().unwrap();
+        keys.clone()
+    };
     if llm_key.is_empty() {
         fail(&app, &id, "KEY", "还没配置 LLM API Key");
         return;
     }
-    let asr_key = keychain_get(KEY_ASR).unwrap_or_default();
     if asr_key.is_empty() && !asr_path.exists() {
         fail(&app, &id, "KEY", "还没配置百炼 API Key");
         return;

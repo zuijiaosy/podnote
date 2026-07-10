@@ -13,9 +13,11 @@ pub fn run() {
         .setup(|app| {
             let root = app.path().app_data_dir()?;
             let lib = library::Library::new(root)?;
+            let keys = commands::keys_load(&lib); // 启动读一次,此后零钥匙串访问
             app.manage(commands::AppState {
                 lib: Mutex::new(lib),
                 client: reqwest::Client::new(),
+                keys: Mutex::new(keys),
             });
             Ok(())
         })
