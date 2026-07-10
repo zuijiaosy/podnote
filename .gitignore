@@ -1,0 +1,16 @@
+# 依赖
+node_modules/
+
+# 管线产物（音频、wav、转写稿、笔记）
+data/
+notes/
+
+# whisper 模型（体积大，按 README 自行下载）
+models/
+
+# 工具状态
+.omc/
+.claude/
+
+# macOS
+.DS_Store
