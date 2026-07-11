@@ -40,6 +40,8 @@ pub fn run() {
             commands::reveal_note,
             commands::get_audio_path,
             commands::download_audio,
+            commands::get_peaks,
+            commands::save_peaks,
             commands::get_tts,
             commands::generate_tts,
             commands::get_settings,

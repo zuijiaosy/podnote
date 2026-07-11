@@ -152,6 +152,7 @@ export function Settings({
     <div style={{
       flex: 1, minWidth: 0, overflow: "auto",
       display: "flex", justifyContent: "center", padding: "48px 0", boxSizing: "border-box",
+      animation: "pn-enter var(--dur-slow) var(--ease) both",
     }}>
       <div style={{ width: 560, display: "flex", flexDirection: "column", gap: 16, height: "fit-content" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

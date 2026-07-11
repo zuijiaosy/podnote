@@ -15,8 +15,9 @@ function emit(event, payload) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ===== 静音 WAV(24kHz 单声道 16bit),朗读播放用 =====
-function silentWavUrl(seconds) {
+// ===== WAV 生成(24kHz 单声道 16bit):静音款朗读用;带波形款充当"播客原声",
+// 让 extractPeaks 真解码出起伏峰值,自测波形生长动效 =====
+function wavUrl(seconds, sample = null) {
   const sr = 24000;
   const n = Math.round(sr * seconds);
   const buf = new ArrayBuffer(44 + n * 2);
@@ -26,8 +27,17 @@ function silentWavUrl(seconds) {
   w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
   v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
   w(36, "data"); v.setUint32(40, n * 2, true);
+  if (sample) {
+    for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(sample(i / sr) * 32767), true);
+  }
   return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
 }
+const silentWavUrl = (seconds) => wavUrl(seconds);
+/** 低音量语音状拟真波形:多个包络叠加,峰值起伏明显 */
+const speechWavUrl = (seconds) =>
+  wavUrl(seconds, (t) =>
+    0.12 * Math.sin(2 * Math.PI * 180 * t)
+      * (0.35 + 0.65 * Math.abs(Math.sin(t * 1.7) * Math.sin(t * 0.43 + 1))));
 
 // ===== 内存状态 =====
 let settings = {
@@ -52,6 +62,7 @@ let subs = [
   { pid: "mock-pid-2", title: "张小珺Jùn｜商业访谈录", lastPub: "2026-07-06T10:00:00.000Z" },
 ];
 const ttsStore = {}; // id -> {complete, segments:[{seq,key,path}]}
+const peaksStore = {}; // id -> number[](波形峰值缓存,对应真后端的 peaks/<id>.json)
 let seq = 100; // 从 100 起,避开预置的 mock-pid-1/2 造成 key 重复
 
 function pipeEmit(id, stage, status, detail = "") {
@@ -111,8 +122,10 @@ export const mockApi = {
       emit("audio-progress", { id, pct });
       await sleep(150);
     }
-    return silentWavUrl(30); // 30 秒静音充当"播客原声"
+    return speechWavUrl(30); // 30 秒拟真波形充当"播客原声"
   },
+  getPeaks: async (id) => peaksStore[id] ?? null,
+  savePeaks: async (id, peaks) => { peaksStore[id] = peaks; },
   getSettings: async () => settings,
   setSettings: async (s) => { settings = { ...settings, ...s }; },
   setKeys: async () => {},

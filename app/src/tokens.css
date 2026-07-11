@@ -49,8 +49,11 @@
   /* 圆角三档 */
   --radius: 6px; --radius-sm: 3px; --radius-round: 999px;
 
-  /* 动效:机械急停,禁止弹簧 */
+  /* 动效:机械急停,禁止弹簧
+     修宪(动效修正案):允许一次性动效,急停 easing,时长 ≤200ms;
+     循环动画仍仅呼吸灯。--dur-slow 用于入场/波形生长等较大位移 */
   --dur: 120ms;
+  --dur-slow: 180ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --ease-linear: linear;
 }
@@ -60,6 +63,15 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+
+/* 一次性动效(动效修正案) */
+@keyframes pn-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes pn-fade  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pn-pop   { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.35); } }
+@keyframes pn-flash { 0%, 100% { background: transparent; } 40% { background: var(--fill-active); } }
+
+/* 全局按压反馈:所有按钮按下 1px 急停(机械键程) */
+button:active, [role="button"]:active { transform: translateY(1px); }
 
 html, body { margin: 0; height: 100%; }
 body {

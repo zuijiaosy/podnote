@@ -298,20 +298,32 @@ function LiveApp() {
   };
 
   // ===== 真实播放引擎:<audio> + asset 协议 + Web Audio 波形峰值 =====
+  const audioInfoRef = useRef({});
+  useEffect(() => { audioInfoRef.current = audioInfo; }, [audioInfo]);
   const registerAudio = useCallback(async (id, path) => {
     const url = await toMediaUrl(path);
     setAudioInfo((m) => ({ ...m, [id]: { url, peaks: m[id]?.peaks ?? null } }));
-    extractPeaks(url)
-      .then((peaks) => setAudioInfo((m) => ({ ...m, [id]: { ...(m[id] ?? { url }), peaks } })))
-      .catch(() => {}); // 解码失败只影响波形观感,不影响播放
+    if (!audioInfoRef.current[id]?.peaks) {
+      extractPeaks(url)
+        .then((peaks) => {
+          setAudioInfo((m) => ({ ...m, [id]: { ...(m[id] ?? { url }), peaks } }));
+          api.savePeaks(id, peaks).catch(() => {}); // 持久化,重启秒显真波形
+        })
+        .catch(() => {}); // 解码失败只影响波形观感,不影响播放
+    }
     return url;
   }, []);
 
-  // 选中已完成剧集时:已下载过的音频直接注册(波形/秒播就绪)
+  // 选中已完成剧集时:峰值缓存先行(秒显真波形),已下载过的音频直接注册(秒播就绪)
   useEffect(() => {
     if (!activeId || audioInfo[activeId]) return;
     const r = records.find((x) => x.id === activeId);
     if (r?.status !== "ready") return;
+    api.getPeaks(activeId).then((peaks) => {
+      if (peaks?.length) {
+        setAudioInfo((m) => (m[activeId]?.peaks ? m : { ...m, [activeId]: { url: m[activeId]?.url ?? null, peaks } }));
+      }
+    }).catch(() => {});
     api.getAudioPath(activeId).then((p) => { if (p) registerAudio(activeId, p); });
   }, [activeId, records, audioInfo, registerAudio]);
 
@@ -332,8 +344,8 @@ function LiveApp() {
     if (playing) { a.pause(); return; }
     ttsAudioRef.current?.pause(); // 播客原声与朗读互斥
     let info = audioInfo[ep.id];
-    if (!info) {
-      // 首次播放:先把音频拉到本地
+    if (!info?.url) {
+      // 首次播放:先把音频拉到本地(峰值缓存可能已就位但没有音频)
       setDlPct(0);
       try {
         const path = await api.downloadAudio(ep.id);

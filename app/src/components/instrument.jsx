@@ -1,5 +1,5 @@
 // 设计系统·instrument 族 — 移植自「Podnote 正式设计 standalone.html」内嵌组件库
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** 丝印状态词。tone 控制墨色;中文标签最低 12px(sm),纯 ASCII 丝印可用 xs。 */
 export function StatusLabel({ children, tone = "default", size = "sm", style }) {
@@ -28,14 +28,25 @@ export function IndicatorLight({ status = "off", label, style }) {
     ready: "var(--status-ready)",
     error: "var(--status-error)",
   };
+  // 挂载后状态翻到 ready 时"咔哒"一跳(初始就是 ready 不跳,避免开机满架绿灯乱蹦)
+  const prev = useRef(status);
+  const [pop, setPop] = useState(false);
+  useEffect(() => {
+    if (prev.current !== status && status === "ready") setPop(true);
+    prev.current = status;
+  }, [status]);
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 8, ...style }}>
-      <span style={{
-        width: 8, height: 8, flex: "none", borderRadius: "var(--radius-round)",
-        background: colors[status],
-        opacity: status === "off" ? 0.5 : 1,
-        animation: status === "processing" ? "pn-breathe 2s linear infinite" : "none",
-      }} />
+      <span
+        onAnimationEnd={() => setPop(false)}
+        style={{
+          width: 8, height: 8, flex: "none", borderRadius: "var(--radius-round)",
+          background: colors[status],
+          opacity: status === "off" ? 0.5 : 1,
+          transition: "background var(--dur) var(--ease)",
+          animation: status === "processing" ? "pn-breathe 2s linear infinite"
+            : pop ? "pn-pop var(--dur-slow) var(--ease)" : "none",
+        }} />
       {label && (
         <span style={{
           fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
@@ -53,12 +64,15 @@ export function IndicatorLight({ status = "off", label, style }) {
 /** 时间戳 = 磁带计数器。等宽数字胶囊,点击回跳,激活态信号橙。 */
 export function Timestamp({ time, active = false, onSeek, style }) {
   const [hover, setHover] = useState(false);
+  const [flash, setFlash] = useState(false); // 点击后闪现一次:指令已执行
   return (
     <button
-      onClick={onSeek}
+      onClick={(e) => { setFlash(true); onSeek?.(e); }}
+      onAnimationEnd={() => setFlash(false)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
+        animation: flash ? "pn-flash var(--dur-slow) var(--ease)" : "none",
         fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
         fontWeight: "var(--weight-regular)",
         letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
@@ -132,15 +146,12 @@ export function EpisodeItem({
   );
 }
 
-/** 波形刻度条 = 真进度条。已播=丝印炭,未播=刻度灰,笔记锚点=信号橙(只上核心观点)。 */
-export function Waveform({ bars, barCount = 110, progress = 0, anchors = [], height = 40, onSeek, style }) {
-  const data = useMemo(() => {
-    if (bars && bars.length) return bars;
-    // 确定性伪随机占位(真实峰值就绪前)
-    const out = []; let s = 7;
-    for (let i = 0; i < barCount; i++) { s = (s * 16807) % 2147483647; out.push(0.25 + (s % 1000) / 1000 * 0.75); }
-    return out;
-  }, [bars, barCount]);
+/** 波形刻度条 = 真进度条。已播=丝印炭,未播=刻度灰,笔记锚点=信号橙(只上核心观点)。
+    bars 必须是真实峰值(Web Audio 解码);没有就诚实地画均匀低矮刻度,
+    真峰值到位时逐条生长成型(transition-delay 从左到右扫过,像仪器校准)。 */
+export function Waveform({ bars, progress = 0, anchors = [], height = 40, onSeek, style }) {
+  const pending = !(bars && bars.length);
+  const data = pending ? PENDING_BARS : bars;
   const n = data.length;
   return (
     <div
@@ -161,13 +172,17 @@ export function Waveform({ bars, barCount = 110, progress = 0, anchors = [], hei
           <span key={i} style={{
             flex: 1, minWidth: 1, maxWidth: isAnchor ? 2 : 3,
             /* 锚点=橙色刻度:半高降噪(真实笔记 10+ 锚点时全高会变圣诞树) */
-            height: isAnchor ? "55%" : `${Math.round(v * 70)}%`,
+            height: isAnchor ? "55%" : pending ? "12%" : `${Math.round(v * 70)}%`,
             background: isAnchor ? "var(--signal)" : played ? "var(--ink)" : "var(--scale)",
-            opacity: isAnchor || played ? 1 : 0.5,
+            opacity: isAnchor || played ? 1 : pending ? 0.35 : 0.5,
             borderRadius: 1,
+            /* 生长只延迟 height:进度颜色翻转不跟着拖泥带水 */
+            transition: `height var(--dur-slow) var(--ease) ${i * 3}ms, background var(--dur) var(--ease), opacity var(--dur) var(--ease)`,
           }} />
         );
       })}
     </div>
   );
 }
+/** 峰值未就绪时的占位:均匀低矮刻度,一眼可辨"还没有数据" */
+const PENDING_BARS = new Array(110).fill(0);

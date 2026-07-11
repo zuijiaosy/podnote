@@ -17,6 +17,13 @@ function fromNote(id, raw, date) {
   };
 }
 
+/** 设计评审样张的静态波形峰值(确定性生成,只喂 DemoApp;实况模式一律真实解码) */
+export const DEMO_PEAKS = (() => {
+  const out = []; let s = 7;
+  for (let i = 0; i < 110; i++) { s = (s * 16807) % 2147483647; out.push(0.25 + (s % 1000) / 1000 * 0.75); }
+  return out;
+})();
+
 export const EPISODES = [
   fromNote("e1", ep125, "07-10"),
   {

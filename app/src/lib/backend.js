@@ -31,6 +31,9 @@ const realApi = {
   revealNote: (id) => invoke("reveal_note", { id }),
   getAudioPath: (id) => invoke("get_audio_path", { id }),
   downloadAudio: (id) => invoke("download_audio", { id }),
+  /** 波形峰值缓存:首次解码后持久化,重启秒显真波形 */
+  getPeaks: (id) => invoke("get_peaks", { id }),
+  savePeaks: (id, peaks) => invoke("save_peaks", { id, peaks }),
   /** 已合成的朗读音频 {path, voice, segments};没有则 null */
   getTts: (id) => invoke("get_tts", { id }),
   generateTts: (id) => invoke("generate_tts", { id }),

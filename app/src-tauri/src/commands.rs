@@ -370,6 +370,23 @@ pub fn get_transcript(state: State<AppState>, id: String) -> Option<Vec<serde_js
     )
 }
 
+/// 波形峰值缓存:读(无则 None)
+#[tauri::command]
+pub fn get_peaks(state: State<AppState>, id: String) -> Option<Vec<f32>> {
+    let path = state.lib.lock().unwrap().peaks_path(&id);
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+}
+
+/// 波形峰值缓存:写(前端首次解码后持久化,重启秒显真波形)
+#[tauri::command]
+pub fn save_peaks(state: State<AppState>, id: String, peaks: Vec<f32>) -> Result<(), String> {
+    let path = state.lib.lock().unwrap().peaks_path(&id);
+    let json = serde_json::to_string(&peaks).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())
+}
+
 /// 已下载音频的本地路径(未下载返回 None)
 #[tauri::command]
 pub fn get_audio_path(state: State<AppState>, id: String) -> Option<String> {

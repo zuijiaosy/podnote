@@ -25,7 +25,7 @@ export function Transcript({ sentences, speakers, playSec, onSeekSec }) {
 
   if (!sentences) {
     return (
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", animation: "pn-enter var(--dur-slow) var(--ease) both" }}>
         <span style={{
           fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
           letterSpacing: "var(--tracking-machine-wide)", color: "var(--scale)",
@@ -35,7 +35,7 @@ export function Transcript({ sentences, speakers, playSec, onSeekSec }) {
   }
 
   return (
-    <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }}>
+    <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "column", animation: "pn-enter var(--dur-slow) var(--ease) both" }}>
       {!follow && (
         <button
           onClick={() => setFollow(true)}

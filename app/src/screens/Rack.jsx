@@ -104,10 +104,13 @@ export function Rack({
           ))}
         </div>
       )}
-      <div style={{
-        flex: 1, minHeight: 0, overflow: "auto", padding: "4px 16px 16px",
-        display: "flex", flexDirection: "column", gap: 8,
-      }}>
+      <div
+        /* 视图/筛选切换时重挂载,触发列表逐条扫入 */
+        key={`${showArchived}|${filterShow ?? ""}`}
+        style={{
+          flex: 1, minHeight: 0, overflow: "auto", padding: "4px 16px 16px",
+          display: "flex", flexDirection: "column", gap: 8,
+        }}>
         {episodes.length === 0 && (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <StatusLabel tone="dim">
@@ -115,7 +118,7 @@ export function Rack({
             </StatusLabel>
           </div>
         )}
-        {episodes.map((ep) => (
+        {episodes.map((ep, i) => (
           <EpisodeItem
             key={ep.id}
             date={ep.date} show={ep.show} title={ep.title}
@@ -124,7 +127,14 @@ export function Rack({
             errReason={ep.errReason}
             active={ep.id === activeId}
             onClick={() => onSelect(ep.id)}
-            style={{ width: "100%", flex: "none", opacity: ep.readAt ? 0.65 : 1 }}
+            style={{
+              width: "100%", flex: "none",
+              /* 归档变暗走 filter:与入场动画的 opacity 通道解耦(fill 会把 opacity 钉在 1) */
+              filter: ep.readAt ? "opacity(0.65)" : "none",
+              /* 逐条扫入,第 10 条后不再递增延迟 */
+              animation: "pn-enter var(--dur-slow) var(--ease) both",
+              animationDelay: `${Math.min(i, 10) * 15}ms`,
+            }}
           />
         ))}
       </div>

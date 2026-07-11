@@ -4,7 +4,7 @@ import { Rack } from "./Rack.jsx";
 import { NoteView } from "./NoteView.jsx";
 import { AddFlow, useDemoStages } from "./AddFlow.jsx";
 import { Settings } from "./Settings.jsx";
-import { EPISODES } from "../lib/fixtures.js";
+import { EPISODES, DEMO_PEAKS } from "../lib/fixtures.js";
 
 export function DemoApp() {
   const [episodes] = useState(EPISODES);
@@ -59,6 +59,7 @@ export function DemoApp() {
           <NoteView
             ep={ep}
             playFrac={playFrac} playing={playing} speed={speed}
+            bars={DEMO_PEAKS}
             onTogglePlay={() => setPlaying((p) => !p)}
             onSeekFrac={setPlayFrac}
             onCycleSpeed={() => setSpeed((v) => ({ 1: 1.5, 1.5: 2, 2: 1 }[v]))}

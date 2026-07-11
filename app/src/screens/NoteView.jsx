@@ -42,6 +42,7 @@ function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate }) {
       flex: "none", background: "var(--well)", borderRadius: "var(--radius)",
       padding: "16px 24px", boxSizing: "border-box",
       display: "flex", flexDirection: "column", gap: 8,
+      animation: "pn-enter var(--dur-slow) var(--ease) both",
     }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--scale)" }}>{ep.show}</span>
@@ -145,9 +146,10 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
         </Button>
       </div>
       {tab === "notes" ? (
-        <Reader ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} ttsSeg={ttsSeg} />
+        <Reader key={ep.id} ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} ttsSeg={ttsSeg} />
       ) : (
         <Transcript
+          key={ep.id}
           sentences={transcript}
           speakers={ep.note?.speakers}
           playSec={playFrac * ep.durationSec}
@@ -173,7 +175,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg }) {
     ? { background: "var(--fill-active)", outline: "1px solid var(--line-soft)" }
     : {});
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: "auto", animation: "pn-enter var(--dur-slow) var(--ease) both" }}>
       <div style={{ maxWidth: 648, margin: "0 auto", padding: "24px 40px 48px", boxSizing: "border-box" }}>
         <div data-tts="tldr" style={{
           background: "var(--panel)", border: "1px solid var(--line-soft)",
@@ -389,6 +391,7 @@ const Center = ({ children }) => (
   <div style={{
     flex: 1, background: "var(--well)", borderRadius: "var(--radius)",
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16,
+    animation: "pn-enter var(--dur-slow) var(--ease) both",
   }}>{children}</div>
 );
 const Hint = ({ children, ink }) => (
@@ -403,7 +406,7 @@ export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, tran
   if (!ep) return null;
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-      <Console ep={ep} onToggleRead={onToggleRead} tts={tts} onToggleTts={onToggleTts} onCycleTtsRate={onCycleTtsRate} />
+      <Console key={ep.id} ep={ep} onToggleRead={onToggleRead} tts={tts} onToggleTts={onToggleTts} onCycleTtsRate={onCycleTtsRate} />
       {ep.status === "ready" && ep.note ? (
         <>
           <ReaderTabs

@@ -11,6 +11,7 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
       style={{
         position: "absolute", inset: 0, background: "rgba(44,44,42,0.35)",
         display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10,
+        animation: "pn-fade var(--dur) var(--ease) both",
       }}
     >
       <div
@@ -19,6 +20,7 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
           width: 480, background: "var(--panel)", border: "1px solid var(--line-soft)",
           borderRadius: "var(--radius)", padding: 24, boxSizing: "border-box",
           display: "flex", flexDirection: "column", gap: 16,
+          animation: "pn-enter var(--dur-slow) var(--ease) both",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
