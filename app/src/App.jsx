@@ -141,16 +141,18 @@ function LiveApp() {
     () => episodes.filter((e) => matchView(e, showArchived, filterShow)),
     [episodes, showArchived, filterShow, matchView]
   );
+  // 频道条计数跟随当前视图:未读视图数未读,归档视图数归档(否则数字会骗人)
   const shows = useMemo(() => {
     const m = new Map();
     for (const e of episodes) {
       const s = m.get(e.show) ?? { name: e.show, unread: 0 };
-      if (!e.readAt) s.unread += 1;
+      if (showArchived ? !!e.readAt : !e.readAt) s.unread += 1;
       m.set(e.show, s);
     }
     return [...m.values()];
-  }, [episodes]);
+  }, [episodes, showArchived]);
   const archivedCount = useMemo(() => episodes.filter((e) => e.readAt).length, [episodes]);
+  const unreadCount = episodes.length - archivedCount;
 
   /** 切筛选后当前选中不在视图里时,跳到视图第一条 */
   const reselectFor = (archived, show) => {
@@ -478,6 +480,7 @@ function LiveApp() {
             filterShow={filterShow}
             onFilterShow={applyFilter}
             archivedCount={archivedCount}
+            unreadCount={unreadCount}
             showArchived={showArchived}
             onToggleArchived={toggleArchivedView}
             activeId={activeId}

@@ -58,9 +58,8 @@ function ViewSwitch({ showArchived, unread, archived, onToggle }) {
 export function Rack({
   episodes, activeId, onSelect, onAdd, onSettings,
   shows = null, filterShow = null, onFilterShow,
-  archivedCount = 0, showArchived = false, onToggleArchived,
+  archivedCount = 0, unreadCount = 0, showArchived = false, onToggleArchived,
 }) {
-  const totalUnread = (shows ?? []).reduce((n, s) => n + s.unread, 0);
   const inboxMode = !!onToggleArchived; // 实况模式;设计评审模式(DemoApp)保持旧布局
   return (
     <div style={{
@@ -90,7 +89,7 @@ export function Rack({
         <div style={{ padding: "4px 16px 8px", boxSizing: "border-box" }}>
           <ViewSwitch
             showArchived={showArchived}
-            unread={totalUnread}
+            unread={unreadCount}
             archived={archivedCount}
             onToggle={onToggleArchived}
           />

@@ -175,7 +175,7 @@ export function Settings({
             hint="笔记生成密钥,只存在本机">
             <KeyInput saved={view.llmKeySet} label="LLM API Key" onSave={(v) => onSaveKeys({ llmKey: v })} />
           </Row>
-          <Row title="LLM 网关地址" hint="不含协议路径,如 https://api.example.com/v1,清空恢复默认">
+          <Row title="LLM 网关地址" hint="填到 /v1 为止,请求路径由协议决定">
             <TextField value={view.llmBaseUrl} fallback={DEFAULTS.llmBaseUrl}
               onSave={(v) => onChangeField({ llmBaseUrl: v })} label="LLM 网关地址" />
           </Row>

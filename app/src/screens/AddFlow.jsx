@@ -35,7 +35,9 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
             </div>
             <Input
               value={url}
+              autoFocus
               onChange={(e) => onUrlChange?.(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") onStart?.(); }}
               placeholder="https://www.xiaoyuzhoufm.com/episode/…"
               style={{ width: "100%" }}
               aria-label="小宇宙单集链接"
