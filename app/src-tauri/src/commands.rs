@@ -485,7 +485,7 @@ pub fn retry_episode(app: AppHandle, state: State<AppState>, id: String) -> Resu
     Ok(())
 }
 
-/// 重新生成笔记:复用转写缓存,只重跑 LLM(调 prompt 的高频动作)
+/// 重新生成笔记:复用转写缓存,只重跑 LLM(换模型/调 prompt 的高频动作)
 #[tauri::command]
 pub fn regenerate_note(app: AppHandle, state: State<AppState>, id: String) -> Result<(), String> {
     state
@@ -499,6 +499,28 @@ pub fn regenerate_note(app: AppHandle, state: State<AppState>, id: String) -> Re
         })
         .map_err(|e| e.to_string())?;
     tauri::async_runtime::spawn(run_pipeline(app, id, true));
+    Ok(())
+}
+
+/// 重新转写:删转写缓存全量重跑(级联重新生成笔记;换转写配置后用)
+#[tauri::command]
+pub fn regenerate_transcript(
+    app: AppHandle,
+    state: State<AppState>,
+    id: String,
+) -> Result<(), String> {
+    {
+        let lib = state.lib.lock().unwrap();
+        let _ = fs::remove_file(lib.asr_path(&id)); // 缓存没了,TRANSCRIBE 必然重跑
+        tts_invalidate(&lib, &id); // 旧朗读立即作废(笔记落盘处还会再调,双保险)
+        lib.update(&id, |r| {
+            r.status = "queued".into();
+            r.err_stage = None;
+            r.err_message = None;
+        })
+        .map_err(|e| e.to_string())?;
+    }
+    tauri::async_runtime::spawn(run_pipeline(app, id, false));
     Ok(())
 }
 

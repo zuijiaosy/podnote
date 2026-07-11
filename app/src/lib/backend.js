@@ -23,6 +23,8 @@ const realApi = {
   addEpisode: (url) => invoke("add_episode", { url }),
   retry: (id) => invoke("retry_episode", { id }),
   regenerate: (id) => invoke("regenerate_note", { id }),
+  /** 重新转写:删缓存全量重跑,级联重新生成笔记 */
+  regenerateTranscript: (id) => invoke("regenerate_transcript", { id }),
   deleteEpisode: (id) => invoke("delete_episode", { id }),
   /** 归档/取消归档(消费状态) */
   setRead: (id, read) => invoke("set_read", { id, read }),

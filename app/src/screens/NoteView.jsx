@@ -1,6 +1,6 @@
 // 右侧主视图:仪表头 + 阅读井(NOTES/TRANSCRIPT 双 tab) + 播放器
 // 布局与「Podnote 正式设计 standalone.html」一致;who 归属为宪法 v2 修正新增
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/core.jsx";
 import { StatusLabel, IndicatorLight, Timestamp, Waveform } from "../components/instrument.jsx";
 import { Transcript } from "./Transcript.jsx";
@@ -81,12 +81,31 @@ function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate }) {
 }
 
 /** 阅读井容器:NOTES(笔记,默认) / TRANSCRIPT(逐句字幕) 双 tab */
-function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, ttsSeg }) {
+function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, ttsSeg, onRegenerateNote, onRegenerateTranscript }) {
   const [tab, setTab] = useState("notes");
   useEffect(() => setTab("notes"), [ep.id]);
   useEffect(() => {
     if (tab === "transcript" && !transcript) onLoadTranscript?.();
   }, [tab, transcript, onLoadTranscript]);
+
+  // 重跑要花钱:两击确认,3 秒不确认自动复位;切 tab/换剧集也复位
+  const [confirm, setConfirm] = useState(false);
+  const confirmTimer = useRef(null);
+  useEffect(() => {
+    setConfirm(false);
+    clearTimeout(confirmTimer.current);
+  }, [tab, ep.id]);
+  useEffect(() => () => clearTimeout(confirmTimer.current), []);
+  const regenClick = () => {
+    if (!confirm) {
+      setConfirm(true);
+      confirmTimer.current = setTimeout(() => setConfirm(false), 3000);
+      return;
+    }
+    clearTimeout(confirmTimer.current);
+    setConfirm(false);
+    (tab === "notes" ? onRegenerateNote : onRegenerateTranscript)?.();
+  };
 
   const tabBtn = (id, label) => (
     <button
@@ -115,6 +134,15 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
       }}>
         {tabBtn("notes", "笔记")}
         {tabBtn("transcript", "字幕")}
+        <span style={{ flex: 1 }} />
+        <Button
+          variant="ghost" size="sm"
+          title={tab === "notes" ? "换模型后重跑笔记,不重新转写" : "重新云端转写并重新生成笔记,耗时几分钟"}
+          onClick={regenClick}
+          style={{ alignSelf: "center", marginBottom: 6 }}
+        >
+          {confirm ? "确认重跑?" : tab === "notes" ? "重新生成" : "重新转写"}
+        </Button>
       </div>
       {tab === "notes" ? (
         <Reader ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} ttsSeg={ttsSeg} />
@@ -371,7 +399,7 @@ const Hint = ({ children, ink }) => (
   }}>{children}</div>
 );
 
-export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, tts, ttsSeg, onToggleTts, onCycleTtsRate, onRetry, onGoSettings }) {
+export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, tts, ttsSeg, onToggleTts, onCycleTtsRate, onRegenerateNote, onRegenerateTranscript, onRetry, onGoSettings }) {
   if (!ep) return null;
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -382,6 +410,8 @@ export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, tran
             ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac}
             transcript={transcript} onLoadTranscript={onLoadTranscript}
             ttsSeg={ttsSeg}
+            onRegenerateNote={onRegenerateNote}
+            onRegenerateTranscript={onRegenerateTranscript}
           />
           <Player
             ep={ep} playFrac={playFrac} playing={playing} speed={speed} bars={bars} downloadPct={downloadPct}

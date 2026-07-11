@@ -99,6 +99,7 @@ export const mockApi = {
   },
   retry: async (id) => { simulatePipeline(id); },
   regenerate: async (id) => { delete ttsStore[id]; simulatePipeline(id); },
+  regenerateTranscript: async (id) => { delete ttsStore[id]; simulatePipeline(id); },
   deleteEpisode: async (id) => { records = records.filter((r) => r.id !== id); },
   setRead: async (id, read) => {
     records = records.map((r) => (r.id === id ? { ...r, readAt: read ? 1752000000 : null } : r));

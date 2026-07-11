@@ -34,6 +34,7 @@ pub fn run() {
             commands::add_episode,
             commands::retry_episode,
             commands::regenerate_note,
+            commands::regenerate_transcript,
             commands::delete_episode,
             commands::set_read,
             commands::reveal_note,

@@ -520,6 +520,19 @@ function LiveApp() {
               onSeekFrac={seekFrac}
               onCycleSpeed={cycleSpeed}
               onToggleRead={toggleRead}
+              onRegenerateNote={() => {
+                if (!ep) return;
+                ttsAudioRef.current?.pause();
+                setTtsInfo((m) => { const n = { ...m }; delete n[ep.id]; return n; }); // 旧朗读作废
+                api.regenerate(ep.id).then(refresh);
+              }}
+              onRegenerateTranscript={() => {
+                if (!ep) return;
+                ttsAudioRef.current?.pause();
+                setTtsInfo((m) => { const n = { ...m }; delete n[ep.id]; return n; });
+                setTranscripts((m) => { const n = { ...m }; delete n[ep.id]; return n; }); // 旧字幕作废
+                api.regenerateTranscript(ep.id).then(refresh);
+              }}
               tts={{
                 playing: ttsPlaying && ttsEpId === ep?.id,
                 waiting: ttsWaiting && ttsEpId === ep?.id,
