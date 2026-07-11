@@ -53,9 +53,13 @@ function LiveApp() {
     setRecords(recs);
     setActiveId((cur) => cur ?? recs[0]?.id ?? null);
   }, []);
+  const [correctionsMap, setCorrectionsMap] = useState({}); // id -> 纠正记录[]
   const loadNote = useCallback(async (id) => {
     const n = await api.getNote(id);
     if (n) setNotes((m) => ({ ...m, [id]: n }));
+    api.getCorrections(id)
+      .then((c) => { if (c) setCorrectionsMap((m) => ({ ...m, [id]: c })); })
+      .catch(() => {});
   }, []);
   const refreshSettings = useCallback(() => api.getSettings().then(setSettingsView), []);
   const [subs, setSubs] = useState([]);
@@ -454,8 +458,8 @@ function LiveApp() {
     refreshSubs();
     return n;
   };
-  const saveKeys = async ({ asrKey, llmKey }) => {
-    await api.setKeys(asrKey, llmKey);
+  const saveKeys = async ({ asrKey, llmKey, tavilyKey }) => {
+    await api.setKeys(asrKey, llmKey, tavilyKey);
     refreshSettings();
   };
   const chooseDir = async () => {
@@ -535,6 +539,18 @@ function LiveApp() {
               onSeekFrac={seekFrac}
               onCycleSpeed={cycleSpeed}
               onToggleRead={toggleRead}
+              corrections={correctionsMap[ep?.id] ?? []}
+              onResearchTerm={(term, context) => api.researchTerm(ep.id, term, context)}
+              onApplyCorrection={async (original, corrected, evidenceUrl, confidence) => {
+                if (!ep) return 0;
+                const n = await api.applyCorrection(ep.id, original, corrected, evidenceUrl, confidence);
+                // 笔记与字幕都变了:旧朗读与旧字幕缓存作废,重拉笔记与纠正记录
+                ttsAudioRef.current?.pause();
+                setTtsInfo((m) => { const x = { ...m }; delete x[ep.id]; return x; });
+                setTranscripts((m) => { const x = { ...m }; delete x[ep.id]; return x; });
+                await loadNote(ep.id);
+                return n;
+              }}
               onRegenerateNote={() => {
                 if (!ep) return;
                 ttsAudioRef.current?.pause();

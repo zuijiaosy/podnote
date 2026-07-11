@@ -44,7 +44,7 @@ let settings = {
   asrHost: "https://mock.example", llmBaseUrl: "https://mock.example/v1",
   llmApi: "openai-responses",
   llmModel: "grok-4.5", notesDir: null, subAuto: true, ttsVoice: "Cherry", ttsRate: 1.5,
-  asrKeySet: true, llmKeySet: true,
+  asrKeySet: true, llmKeySet: true, tavilyKeySet: true,
 };
 const notes = {
   m1: ep125,
@@ -62,6 +62,7 @@ let subs = [
   { pid: "mock-pid-2", title: "张小珺Jùn｜商业访谈录", lastPub: "2026-07-06T10:00:00.000Z" },
 ];
 const ttsStore = {}; // id -> {complete, segments:[{seq,key,path}]}
+const correctionsStore = {}; // id -> [{original, corrected, evidenceUrl, confidence, ts}]
 const peaksStore = {}; // id -> number[](波形峰值缓存,对应真后端的 peaks/<id>.json)
 let seq = 100; // 从 100 起,避开预置的 mock-pid-1/2 造成 key 重复
 
@@ -152,6 +153,37 @@ export const mockApi = {
     simulatePipeline(id);
     return 1;
   },
+  /** 划词纠正查证:canned verdict — 含 "面筋"/"Player" 返回已证实,其余返回推测 */
+  researchTerm: async (_id, term) => {
+    await sleep(1200);
+    if (/players?/i.test(term)) {
+      return { corrected: "No Priors", confidence: "confirmed", evidenceUrl: "https://www.no-priors.com/", note: "官方网站与各播客平台写法均为 No Priors" };
+    }
+    if (term.includes("面筋")) {
+      return { corrected: term.replace(/面筋/g, "面基"), confidence: "confirmed", evidenceUrl: "https://www.xiaoyuzhoufm.com/", note: "小宇宙节目页写法为「面基」" };
+    }
+    if (term.length <= 2) return { corrected: null, confidence: "speculative", evidenceUrl: null, note: "没有找到更可信的写法" };
+    return { corrected: `${term}(修)`, confidence: "speculative", evidenceUrl: null, note: "证据不足,仅为推测(mock)" };
+  },
+  applyCorrection: async (id, original, corrected, evidenceUrl, confidence) => {
+    const note = notes[id]?.note;
+    if (!note) throw "笔记还没生成";
+    let n = 0;
+    const rep = (s) => {
+      const parts = String(s).split(original);
+      n += parts.length - 1;
+      return parts.join(corrected);
+    };
+    note.tldr = rep(note.tldr);
+    note.points.forEach((p) => { p.h = rep(p.h); p.body = rep(p.body); });
+    note.quotes.forEach((q) => { q.text = rep(q.text); });
+    note.resources.forEach((r) => { r.name = rep(r.name); r.note = rep(r.note); });
+    note.questions = note.questions.map(rep);
+    (correctionsStore[id] ??= []).push({ original, corrected, evidenceUrl: evidenceUrl ?? null, confidence, ts: Math.floor(Date.now() / 1000) });
+    delete ttsStore[id]; // 笔记变了,旧朗读作废
+    return n;
+  },
+  getCorrections: async (id) => correctionsStore[id] ?? [],
   getTts: async (id) => ttsStore[id] ?? null,
   generateTts: async (id) => {
     const note = notes[id]?.note;

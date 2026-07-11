@@ -15,6 +15,16 @@ export async function toMediaUrl(path) {
   return convertFileSrc(path);
 }
 
+/** 外开链接(纠正证据等):Tauri 走 opener 插件,浏览器新标签页 */
+export async function openExternal(url) {
+  if (!inTauri) {
+    window.open(url, "_blank", "noopener");
+    return;
+  }
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl(url);
+}
+
 const realApi = {
   getLibrary: () => invoke("get_library"),
   getNote: (id) => invoke("get_note", { id }),
@@ -37,9 +47,17 @@ const realApi = {
   /** 已合成的朗读音频 {path, voice, segments};没有则 null */
   getTts: (id) => invoke("get_tts", { id }),
   generateTts: (id) => invoke("generate_tts", { id }),
+  /** 划词纠正:查证可疑词,返回 {corrected, confidence, evidenceUrl, note} */
+  researchTerm: (id, term, context) => invoke("research_term", { id, term, context }),
+  /** 应用纠正:笔记+字幕全文替换并沉淀频道词表;返回笔记替换处数 */
+  applyCorrection: (id, original, corrected, evidenceUrl, confidence) =>
+    invoke("apply_correction", { id, original, corrected, evidenceUrl: evidenceUrl ?? null, confidence }),
+  /** 单集纠正记录(下划线标记数据源) */
+  getCorrections: (id) => invoke("get_corrections", { id }),
   getSettings: () => invoke("get_settings"),
   setSettings: (settings) => invoke("set_settings", { settings }),
-  setKeys: (asrKey, llmKey) => invoke("set_keys", { asrKey: asrKey ?? null, llmKey: llmKey ?? null }),
+  setKeys: (asrKey, llmKey, tavilyKey) =>
+    invoke("set_keys", { asrKey: asrKey ?? null, llmKey: llmKey ?? null, tavilyKey: tavilyKey ?? null }),
   getSubscriptions: () => invoke("get_subscriptions"),
   addSubscription: (url) => invoke("add_subscription", { url }),
   removeSubscription: (pid) => invoke("remove_subscription", { pid }),

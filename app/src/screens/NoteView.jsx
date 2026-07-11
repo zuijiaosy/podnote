@@ -1,10 +1,171 @@
 // 右侧主视图:仪表头 + 阅读井(NOTES/TRANSCRIPT 双 tab) + 播放器
 // 布局与「Podnote 正式设计 standalone.html」一致;who 归属为宪法 v2 修正新增
+// 划词纠正:选中可疑词 → 浮层核实(LLM+搜索) → 确认替换全文;纠正过的词虚线下划线可溯源
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/core.jsx";
 import { StatusLabel, IndicatorLight, Timestamp, Waveform } from "../components/instrument.jsx";
 import { Transcript } from "./Transcript.jsx";
 import { fmt } from "../lib/format.js";
+import { openExternal } from "../lib/backend.js";
+
+/** 纠正过的词加虚线下划线,悬停显示原词与依据;锚定正词(重生成后 LLM 直出正词,标记依然命中) */
+function Marked({ text, corrections }) {
+  if (!corrections?.length || !text) return text;
+  const items = [...corrections]
+    .filter((c) => c.corrected)
+    .sort((a, b) => b.corrected.length - a.corrected.length); // 长词优先,防短词切碎长词
+  let parts = [String(text)];
+  for (const c of items) {
+    parts = parts.flatMap((p) => {
+      if (typeof p !== "string" || !p.includes(c.corrected)) return [p];
+      const out = [];
+      p.split(c.corrected).forEach((seg, i) => {
+        if (i > 0) out.push({ word: c.corrected, c });
+        if (seg) out.push(seg);
+      });
+      return out;
+    });
+  }
+  return (
+    <>
+      {parts.map((p, i) =>
+        typeof p === "string" ? (
+          p
+        ) : (
+          <span
+            key={i}
+            title={`原词: ${p.c.original}${p.c.evidenceUrl ? `\n证据: ${p.c.evidenceUrl}` : ""}${p.c.confidence === "speculative" ? "\n(推测)" : ""}`}
+            style={{ borderBottom: "1px dashed var(--scale)", cursor: "help" }}
+          >
+            {p.word}
+          </span>
+        )
+      )}
+    </>
+  );
+}
+
+/** 右键菜单:核实选中词 / 继续多选(仅收起菜单,选区保留) */
+function ContextMenu({ menu, onVerify, onClose }) {
+  const item = (label, { disabled, onClick } = {}) => (
+    <button
+      onClick={disabled ? undefined : onClick}
+      style={{
+        fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)",
+        color: disabled ? "var(--scale)" : "var(--ink)",
+        background: "transparent", border: "none", borderRadius: "var(--radius-sm)",
+        padding: "8px 12px", textAlign: "left", cursor: disabled ? "default" : "pointer",
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 280,
+      }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = "var(--fill-hover)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+    >{label}</button>
+  );
+  return (
+    <div
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{
+        position: "absolute", top: menu.top, left: menu.left, zIndex: 3, minWidth: 160,
+        background: "var(--panel)", border: "1px solid var(--line-soft)",
+        borderRadius: "var(--radius)", padding: 4, boxSizing: "border-box",
+        display: "flex", flexDirection: "column",
+        animation: "pn-pop var(--dur) var(--ease) both",
+      }}
+    >
+      {item(
+        menu.term
+          ? `核实「${menu.term.length > 16 ? `${menu.term.slice(0, 16)}…` : menu.term}」`
+          : menu.tooLong ? "选中内容太长" : "先选中要核实的词",
+        { disabled: !menu.term, onClick: onVerify }
+      )}
+      {item("继续多选", { onClick: onClose })}
+    </div>
+  );
+}
+
+/** 划词浮层:查证中(loading)→ 结论(done)→ 已替换(applied);error 可重试 */
+function CorrectionPopover({ sel, phase, verdict, err, applyMsg, onResearch, onApply, onClose }) {
+  const mono = {
+    fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
+    letterSpacing: "var(--tracking-machine)", color: "var(--ink)",
+  };
+  const hint = { fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--scale)", lineHeight: 1.6 };
+  const speculative = verdict?.confidence !== "confirmed";
+  return (
+    <div
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      style={{
+        position: "absolute", top: sel.top, left: sel.left, width: 320, zIndex: 3,
+        background: "var(--panel)", border: "1px solid var(--line-soft)",
+        borderRadius: "var(--radius)", padding: "12px 16px", boxSizing: "border-box",
+        display: "flex", flexDirection: "column", gap: 8,
+        animation: "pn-pop var(--dur) var(--ease) both",
+      }}
+    >
+      {phase === "loading" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IndicatorLight status="processing" label="查证中…" />
+          <span style={{ flex: 1 }} />
+          <Button variant="ghost" size="sm" onClick={onClose}>取消</Button>
+        </div>
+      )}
+      {phase === "done" && verdict?.corrected && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <span style={{ ...mono, textDecoration: "line-through", color: "var(--scale)" }}>{sel.term}</span>
+            <span style={{ ...mono, color: "var(--scale)" }}>→</span>
+            <span style={{ ...mono, fontWeight: "var(--weight-medium)" }}>{verdict.corrected}</span>
+            <span style={{ flex: 1 }} />
+            <StatusLabel tone={speculative ? "dim" : "ready"}>
+              {speculative ? "推测" : "已证实"}
+            </StatusLabel>
+          </div>
+          {verdict.note && <div style={hint}>{verdict.note}{speculative ? " · 请自行判断" : ""}</div>}
+          {verdict.evidenceUrl && (
+            <button
+              onClick={() => openExternal(verdict.evidenceUrl)}
+              style={{
+                ...hint, background: "transparent", border: "none", padding: 0,
+                textAlign: "left", cursor: "pointer", textDecoration: "underline",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}
+              title={verdict.evidenceUrl}
+            >{verdict.evidenceUrl}</button>
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+            <Button variant="secondary" size="sm" onClick={onApply}>
+              {speculative ? "仍要替换" : "替换全文"}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onClose}>取消</Button>
+          </div>
+        </>
+      )}
+      {phase === "done" && !verdict?.corrected && (
+        <>
+          <div style={hint}>未发现更可信的写法{verdict?.note ? ` · ${verdict.note}` : ""}</div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Button variant="ghost" size="sm" onClick={onClose}>关闭</Button>
+          </div>
+        </>
+      )}
+      {phase === "error" && (
+        <>
+          <div style={{ ...hint, color: "var(--ink)" }}>{err}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+            <Button variant="secondary" size="sm" onClick={onResearch}>重试</Button>
+            <Button variant="ghost" size="sm" onClick={onClose}>取消</Button>
+          </div>
+        </>
+      )}
+      {phase === "applied" && (
+        <div style={{ ...mono, textAlign: "center" }}>{applyMsg}</div>
+      )}
+    </div>
+  );
+}
 
 function Who({ name }) {
   if (!name) return null;
@@ -82,7 +243,7 @@ function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate }) {
 }
 
 /** 阅读井容器:NOTES(笔记,默认) / TRANSCRIPT(逐句字幕) 双 tab */
-function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, ttsSeg, onRegenerateNote, onRegenerateTranscript }) {
+function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, ttsSeg, onRegenerateNote, onRegenerateTranscript, corrections, onResearchTerm, onApplyCorrection }) {
   const [tab, setTab] = useState("notes");
   useEffect(() => setTab("notes"), [ep.id]);
   useEffect(() => {
@@ -146,7 +307,10 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
         </Button>
       </div>
       {tab === "notes" ? (
-        <Reader key={ep.id} ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} ttsSeg={ttsSeg} />
+        <Reader
+          key={ep.id} ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} ttsSeg={ttsSeg}
+          corrections={corrections} onResearchTerm={onResearchTerm} onApplyCorrection={onApplyCorrection}
+        />
       ) : (
         <Transcript
           key={ep.id}
@@ -160,10 +324,11 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
   );
 }
 
-function Reader({ ep, playFrac, onSeekFrac, ttsSeg }) {
+function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm, onApplyCorrection }) {
   const note = ep.note;
   const mkSeek = (t) => () => onSeekFrac(t / ep.durationSec);
   const isActive = (t) => Math.abs(t / ep.durationSec - playFrac) < 0.015;
+  const contRef = useRef(null);
   // 朗读到哪段,视口跟到哪段
   useEffect(() => {
     if (!ttsSeg) return;
@@ -174,8 +339,111 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg }) {
   const hl = (key) => (ttsSeg === key
     ? { background: "var(--fill-active)", outline: "1px solid var(--line-soft)" }
     : {});
+  /** 纠正标记:文本统一经 Marked 渲染 */
+  const M = (text) => <Marked text={text} corrections={corrections} />;
+
+  // ===== 划词纠正:选中 → 右键菜单「核实」→ 浮层(都在滚动内容里,随文滚动) =====
+  const [menu, setMenu] = useState(null); // {term, context, tooLong, top, left}
+  const [sel, setSel] = useState(null); // {term, context, top, left}
+  const [phase, setPhase] = useState("loading");
+  const [verdict, setVerdict] = useState(null);
+  const [err, setErr] = useState("");
+  const [applyMsg, setApplyMsg] = useState("");
+  const reqRef = useRef(0);
+  const closeSel = () => { reqRef.current += 1; setSel(null); setMenu(null); setVerdict(null); setErr(""); };
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") closeSel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  /** 右键 → 自定义菜单(选区保留;「继续多选」仅收起菜单) */
+  const onContextMenu = (e) => {
+    const cont = contRef.current;
+    if (!cont) return;
+    e.preventDefault();
+    const s = window.getSelection();
+    let text = (s?.toString() ?? "").trim().replace(/\s*\n\s*/g, " ");
+    let tooLong = false;
+    if (text.length > 60) {
+      text = "";
+      tooLong = true;
+    }
+    // 语境:选区所在文本节点前后各 ~80 字,供查证 LLM 定位
+    let context = "";
+    if (text && s.rangeCount > 0) {
+      const range = s.getRangeAt(0);
+      if (!cont.contains(range.commonAncestorContainer)) return;
+      const para = range.startContainer.textContent || "";
+      const idx = para.indexOf(text);
+      context = idx >= 0
+        ? para.slice(Math.max(0, idx - 80), idx + text.length + 80)
+        : para.slice(0, 160);
+    }
+    const cr = cont.getBoundingClientRect();
+    const top = e.clientY - cr.top + cont.scrollTop + 4;
+    const left = Math.min(Math.max(e.clientX - cr.left + cont.scrollLeft, 8), Math.max(cr.width - 300, 8));
+    reqRef.current += 1;
+    setSel(null);
+    setVerdict(null);
+    setErr("");
+    setMenu({ term: text, context, tooLong, top, left });
+  };
+
+  const research = async (target) => {
+    const req = ++reqRef.current;
+    setPhase("loading");
+    setErr("");
+    try {
+      const v = await onResearchTerm(target.term, target.context);
+      if (reqRef.current !== req) return; // 已关闭/换词,丢弃过期结果
+      setVerdict(v);
+      setPhase("done");
+    } catch (e) {
+      if (reqRef.current !== req) return;
+      setErr(String(e));
+      setPhase("error");
+    }
+  };
+  /** 菜单选「核实」:菜单原位换成查证浮层,立即发起查证 */
+  const verifyFromMenu = () => {
+    if (!menu?.term) return;
+    const target = { term: menu.term, context: menu.context, top: menu.top, left: menu.left };
+    setMenu(null);
+    setSel(target);
+    research(target);
+  };
+  const doResearch = () => { if (sel) research(sel); }; // error 态「重试」
+  const doApply = async () => {
+    if (!sel || !verdict?.corrected) return;
+    const req = reqRef.current;
+    try {
+      const n = await onApplyCorrection(sel.term, verdict.corrected, verdict.evidenceUrl ?? null, verdict.confidence);
+      if (reqRef.current !== req) return;
+      setApplyMsg(n > 0 ? `已替换 ${n} 处` : "已记入词表");
+      setPhase("applied");
+      setTimeout(() => closeSel(), 900);
+    } catch (e) {
+      if (reqRef.current !== req) return;
+      setErr(String(e));
+      setPhase("error");
+    }
+  };
+
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: "auto", animation: "pn-enter var(--dur-slow) var(--ease) both" }}>
+    <div
+      ref={contRef}
+      onContextMenu={onContextMenu}
+      onMouseDown={() => { if (menu) setMenu(null); }}
+      style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative", animation: "pn-enter var(--dur-slow) var(--ease) both" }}
+    >
+      {menu && <ContextMenu menu={menu} onVerify={verifyFromMenu} onClose={() => setMenu(null)} />}
+      {sel && (
+        <CorrectionPopover
+          sel={sel} phase={phase} verdict={verdict} err={err} applyMsg={applyMsg}
+          onResearch={doResearch} onApply={doApply} onClose={closeSel}
+        />
+      )}
       <div style={{ maxWidth: 648, margin: "0 auto", padding: "24px 40px 48px", boxSizing: "border-box" }}>
         <div data-tts="tldr" style={{
           background: "var(--panel)", border: "1px solid var(--line-soft)",
@@ -188,7 +456,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg }) {
           <span style={{
             fontFamily: "var(--font-sans)", fontSize: "var(--text-lg)",
             fontWeight: "var(--weight-medium)", color: "var(--ink)", lineHeight: 1.6,
-          }}>{note.tldr}</span>
+          }}>{M(note.tldr)}</span>
         </div>
 
         <SectionHead idx="01" title="核心观点" />
@@ -207,13 +475,13 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg }) {
               <span style={{
                 fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
                 fontWeight: "var(--weight-medium)", color: "var(--ink)", minWidth: 0,
-              }}>{p.h}</span>
+              }}>{M(p.h)}</span>
               <Who name={p.who} />
             </div>
             <div style={{
               fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
               color: "var(--ink)", lineHeight: "var(--leading-note)", textWrap: "pretty",
-            }}>{p.body}</div>
+            }}>{M(p.body)}</div>
           </div>
         ))}
 
@@ -228,7 +496,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg }) {
             <span style={{
               fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
               color: "var(--ink)", lineHeight: "var(--leading-note)",
-            }}>「{q.text}」</span>
+            }}>「{M(q.text)}」</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Timestamp time={q.ts} active={isActive(q.t)} onSeek={mkSeek(q.t)} />
               <Who name={q.who} />
@@ -249,11 +517,11 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg }) {
               <span style={{
                 fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
                 fontWeight: "var(--weight-medium)", color: "var(--ink)", flex: "none",
-              }}>{r.name}</span>
+              }}>{M(r.name)}</span>
               <span style={{
                 fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)",
                 color: "var(--scale)", lineHeight: 1.6,
-              }}>{r.note}</span>
+              }}>{M(r.note)}</span>
             </div>
           ))}
         </div>
@@ -268,7 +536,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg }) {
             <span style={{
               fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
               color: "var(--ink)", lineHeight: "var(--leading-note)",
-            }}>{q}</span>
+            }}>{M(q)}</span>
           </div>
         ))}
       </div>
@@ -402,7 +670,7 @@ const Hint = ({ children, ink }) => (
   }}>{children}</div>
 );
 
-export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, tts, ttsSeg, onToggleTts, onCycleTtsRate, onRegenerateNote, onRegenerateTranscript, onRetry, onGoSettings }) {
+export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, tts, ttsSeg, onToggleTts, onCycleTtsRate, onRegenerateNote, onRegenerateTranscript, corrections, onResearchTerm, onApplyCorrection, onRetry, onGoSettings }) {
   if (!ep) return null;
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -415,6 +683,9 @@ export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, tran
             ttsSeg={ttsSeg}
             onRegenerateNote={onRegenerateNote}
             onRegenerateTranscript={onRegenerateTranscript}
+            corrections={corrections}
+            onResearchTerm={onResearchTerm}
+            onApplyCorrection={onApplyCorrection}
           />
           <Player
             ep={ep} playFrac={playFrac} playing={playing} speed={speed} bars={bars} downloadPct={downloadPct}

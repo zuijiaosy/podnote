@@ -85,7 +85,8 @@ body {
 
 a { color: var(--ink); text-decoration-color: var(--signal); text-underline-offset: 2px; }
 a:hover { color: var(--signal); }
-::selection { background: var(--well); color: var(--ink); }
+/* 修宪(划词纠正实测):原 --well 选中色与阅读井底色相同,选区隐形;改用 line-soft 档 */
+::selection { background: var(--line-soft); color: var(--ink); }
 button { font: inherit; color: inherit; }
 button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid var(--ink); outline-offset: 2px;
