@@ -423,6 +423,7 @@ function LiveApp() {
     await api.setSettings({
       asrHost: next.asrHost,
       llmBaseUrl: next.llmBaseUrl,
+      llmApi: next.llmApi || "openai-responses",
       llmModel: next.llmModel,
       notesDir: next.notesDir ?? null,
       subAuto: next.subAuto ?? true,

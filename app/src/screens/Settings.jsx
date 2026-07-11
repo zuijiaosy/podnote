@@ -1,7 +1,7 @@
 // 设置 — 行式布局与「Podnote 正式设计 standalone.html」一致
 // key 输入失焦即存钥匙串;已保存时占位提示,不回显密文
 import { useState } from "react";
-import { Button, Input, Lever } from "../components/core.jsx";
+import { Button, Input, Lever, Segmented } from "../components/core.jsx";
 import { StatusLabel } from "../components/instrument.jsx";
 
 function Row({ title, hint, children, last }) {
@@ -62,9 +62,16 @@ function TextField({ value, fallback, onSave, label, width = 264 }) {
 const DEFAULTS = {
   asrHost: "https://llm-xy8sn8964kplkx1s.cn-beijing.maas.aliyuncs.com",
   llmBaseUrl: "https://api.codexzh.com/v1",
+  llmApi: "openai-responses",
   llmModel: "grok-4.5",
   ttsVoice: "Cherry",
 };
+
+const LLM_PROTOCOLS = [
+  { value: "openai-responses", label: "Responses" },
+  { value: "openai-completions", label: "Chat" },
+  { value: "anthropic-messages", label: "Claude" },
+];
 
 /** 订阅管理:节目列表 + 添加(节目/单集链接均可)+ 立即检查 */
 function Subscriptions({ subs, onAdd, onRemove, onCheck }) {
@@ -168,9 +175,17 @@ export function Settings({
             hint="笔记生成密钥,只存在本机">
             <KeyInput saved={view.llmKeySet} label="LLM API Key" onSave={(v) => onSaveKeys({ llmKey: v })} />
           </Row>
-          <Row title="LLM 网关地址" hint="OpenAI Responses 协议,清空恢复默认">
+          <Row title="LLM 网关地址" hint="不含协议路径,如 https://api.example.com/v1,清空恢复默认">
             <TextField value={view.llmBaseUrl} fallback={DEFAULTS.llmBaseUrl}
               onSave={(v) => onChangeField({ llmBaseUrl: v })} label="LLM 网关地址" />
+          </Row>
+          <Row title="LLM 协议" hint="按网关支持选择:/responses · /chat/completions · /messages">
+            <Segmented
+              options={LLM_PROTOCOLS}
+              value={view.llmApi || DEFAULTS.llmApi}
+              onChange={(v) => onChangeField({ llmApi: v })}
+              style={{ width: 264 }}
+            />
           </Row>
           <Row title="笔记模型" hint="模型 ID,按网关支持填写,清空恢复默认">
             <TextField value={view.llmModel} fallback={DEFAULTS.llmModel}

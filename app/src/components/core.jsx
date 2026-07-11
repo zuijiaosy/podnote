@@ -55,6 +55,37 @@ export function Button({ variant = "secondary", size = "md", children, style, ..
   );
 }
 
+/** 分段选择:选项互斥,选中项 fill-active + ink 描边(与磁带架视图切换同语言) */
+export function Segmented({ options, value, onChange, style }) {
+  const cell = (active) => ({
+    flex: 1, padding: "5px 8px", textAlign: "center",
+    fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+    letterSpacing: "var(--tracking-machine)",
+    cursor: active ? "default" : "pointer", userSelect: "none",
+    background: active ? "var(--fill-active)" : "transparent",
+    color: active ? "var(--ink)" : "var(--scale)",
+    border: active ? "1px solid var(--ink)" : "1px solid transparent",
+    borderRadius: "var(--radius-sm)",
+    whiteSpace: "nowrap",
+    transition: "background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease)",
+  });
+  return (
+    <div style={{
+      display: "flex", gap: 4, padding: 3,
+      background: "var(--panel)", border: "1px solid var(--line-soft)",
+      borderRadius: "var(--radius)", boxSizing: "border-box",
+      ...style,
+    }}>
+      {options.map((o) => (
+        <button key={o.value} style={cell(o.value === value)}
+          onClick={() => o.value !== value && onChange?.(o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** 凹槽输入框。mono=true 用于机器内容(链接、API Key);sans 用于人写的内容。 */
 export function Input({ mono = true, style, ...rest }) {
   const [focus, setFocus] = useState(false);

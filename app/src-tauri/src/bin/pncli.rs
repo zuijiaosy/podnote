@@ -98,6 +98,10 @@ async fn main() -> Result<()> {
             .or_else(|_| std::env::var("OPENAI_API_KEY"))
             .unwrap_or_default(),
         model: std::env::var("PI_MODEL").unwrap_or_else(|_| "grok-4.5".into()),
+        // 与 Node CLI 的 PI_API 同名同义:openai-responses | openai-completions | anthropic-messages
+        protocol: app_lib::pipeline::llm::Protocol::from_id(
+            &std::env::var("PI_API").unwrap_or_default(),
+        ),
     };
     let client = reqwest::Client::new();
 

@@ -29,6 +29,8 @@ pub struct AppState {
 pub struct Settings {
     pub asr_host: String,
     pub llm_base_url: String,
+    /// LLM 协议:openai-responses | openai-completions | anthropic-messages
+    pub llm_api: String,
     pub llm_model: String,
     /// 额外导出目录(如个人笔记库);None 则只写 app 数据目录
     pub notes_dir: Option<String>,
@@ -44,6 +46,7 @@ impl Default for Settings {
         Self {
             asr_host: asr::DEFAULT_HOST.into(),
             llm_base_url: "https://api.codexzh.com/v1".into(),
+            llm_api: "openai-responses".into(),
             llm_model: "grok-4.5".into(),
             notes_dir: None,
             sub_auto: true,
@@ -649,6 +652,7 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
         base_url: settings.llm_base_url.clone(),
         api_key: llm_key,
         model: settings.llm_model.clone(),
+        protocol: crate::pipeline::llm::Protocol::from_id(&settings.llm_api),
     };
     let timed = asr::to_timed_text(&asr_result);
     let app3 = app.clone();

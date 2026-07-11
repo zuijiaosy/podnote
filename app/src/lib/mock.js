@@ -32,6 +32,7 @@ function silentWavUrl(seconds) {
 // ===== 内存状态 =====
 let settings = {
   asrHost: "https://mock.example", llmBaseUrl: "https://mock.example/v1",
+  llmApi: "openai-responses",
   llmModel: "grok-4.5", notesDir: null, subAuto: true, ttsVoice: "Cherry", ttsRate: 1.5,
   asrKeySet: true, llmKeySet: true,
 };
