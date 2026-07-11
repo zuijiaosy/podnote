@@ -9,15 +9,22 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
 use crate::library::{ensure_dir, episode_id, short_date, EpisodeRecord, Library};
-use crate::pipeline::{asr, note, resolve, summarize, tts};
+use crate::pipeline::{asr, correct, glossary, note, resolve, summarize, tts, vocab};
 use crate::subscriptions::{pick_new, SubStore, Subscription};
+
+/// 密钥内存缓存:启动时读一次,运行期零钥匙串访问
+/// (钥匙串弹窗会阻塞主线程;dev 构建每次重编译签名变化还会反复弹窗)
+#[derive(Debug, Clone, Default)]
+pub struct Keys {
+    pub asr: String,
+    pub llm: String,
+    pub tavily: String,
+}
 
 pub struct AppState {
     pub lib: Mutex<Library>,
     pub client: reqwest::Client,
-    /// (asr_key, llm_key) 内存缓存:启动时读一次,运行期零钥匙串访问
-    /// (钥匙串弹窗会阻塞主线程;dev 构建每次重编译签名变化还会反复弹窗)
-    pub keys: Mutex<(String, String)>,
+    pub keys: Mutex<Keys>,
     /// 订阅检查进行中(定时轮询与手动检查互斥,防重复入库)
     pub checking_subs: AtomicBool,
 }
@@ -58,7 +65,7 @@ impl Default for Settings {
 
 /// 启动时读一次密钥。存 app 数据目录 keys.json(明文)——自用取舍:
 /// 无签名证书时钥匙串授权随每次打包失效,启动反复弹密码框不可用
-pub fn keys_load(lib: &Library) -> (String, String) {
+pub fn keys_load(lib: &Library) -> Keys {
     let v: Option<serde_json::Value> = fs::read_to_string(lib.root.join("keys.json"))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok());
@@ -68,14 +75,16 @@ pub fn keys_load(lib: &Library) -> (String, String) {
             .unwrap_or("")
             .to_string()
     };
-    (get("asrKey"), get("llmKey"))
+    Keys { asr: get("asrKey"), llm: get("llmKey"), tavily: get("tavilyKey") }
 }
 
-fn keys_save(lib: &Library, asr: &str, llm: &str) -> Result<(), String> {
+fn keys_save(lib: &Library, keys: &Keys) -> Result<(), String> {
     fs::write(
         lib.root.join("keys.json"),
-        serde_json::to_string_pretty(&serde_json::json!({ "asrKey": asr, "llmKey": llm }))
-            .map_err(|e| e.to_string())?,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "asrKey": keys.asr, "llmKey": keys.llm, "tavilyKey": keys.tavily,
+        }))
+        .map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())
 }
@@ -97,6 +106,7 @@ pub struct SettingsView {
     pub settings: Settings,
     pub asr_key_set: bool,
     pub llm_key_set: bool,
+    pub tavily_key_set: bool,
 }
 
 #[tauri::command]
@@ -105,8 +115,9 @@ pub fn get_settings(state: State<AppState>) -> SettingsView {
     let keys = state.keys.lock().unwrap();
     SettingsView {
         settings: load_settings(&lib),
-        asr_key_set: !keys.0.is_empty(),
-        llm_key_set: !keys.1.is_empty(),
+        asr_key_set: !keys.asr.is_empty(),
+        llm_key_set: !keys.llm.is_empty(),
+        tavily_key_set: !keys.tavily.is_empty(),
     }
 }
 
@@ -125,19 +136,23 @@ pub async fn set_keys(
     state: State<'_, AppState>,
     asr_key: Option<String>,
     llm_key: Option<String>,
+    tavily_key: Option<String>,
 ) -> Result<(), String> {
-    let (asr, llm) = {
+    let snapshot = {
         let mut keys = state.keys.lock().unwrap();
         if let Some(k) = asr_key {
-            keys.0 = k;
+            keys.asr = k;
         }
         if let Some(k) = llm_key {
-            keys.1 = k;
+            keys.llm = k;
+        }
+        if let Some(k) = tavily_key {
+            keys.tavily = k;
         }
         keys.clone()
     };
     let lib = state.lib.lock().unwrap();
-    keys_save(&lib, &asr, &llm)
+    keys_save(&lib, &snapshot)
 }
 
 // ===== 库 =====
@@ -256,7 +271,7 @@ async fn run_tts(app: AppHandle, id: String) {
             state.client.clone(),
             lib.note_json_path(&id),
             load_settings(&lib).tts_voice,
-            keys.0.clone(),
+            keys.asr.clone(),
         )
     };
     if asr_key.is_empty() {
@@ -541,6 +556,136 @@ pub fn regenerate_transcript(
     Ok(())
 }
 
+// ===== 划词纠正:查证(LLM+Tavily)→ 应用(笔记+字幕全文替换)→ 沉淀频道词表 =====
+
+#[tauri::command]
+pub async fn research_term(
+    state: State<'_, AppState>,
+    id: String,
+    term: String,
+    context: String,
+) -> Result<correct::TermVerdict, String> {
+    let (client, keys, settings, show) = {
+        let lib = state.lib.lock().unwrap();
+        let keys = state.keys.lock().unwrap().clone();
+        let show = lib.get(&id).map(|r| r.show).unwrap_or_default();
+        (state.client.clone(), keys, load_settings(&lib), show)
+    };
+    if keys.tavily.is_empty() {
+        return Err("还没配置 Tavily API Key".into());
+    }
+    if keys.llm.is_empty() {
+        return Err("还没配置 LLM API Key".into());
+    }
+    let llm = summarize::LlmConfig {
+        base_url: settings.llm_base_url.clone(),
+        api_key: keys.llm,
+        model: settings.llm_model.clone(),
+        protocol: crate::pipeline::llm::Protocol::from_id(&settings.llm_api),
+    };
+    correct::research_term(&client, &llm, &keys.tavily, &show, &term, &context)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 应用纠正:笔记全字段 + 字幕逐句替换,双产物与导出副本重写,记入单集纠正与频道词表;
+/// 返回笔记里的替换处数
+#[tauri::command]
+pub fn apply_correction(
+    state: State<AppState>,
+    id: String,
+    original: String,
+    corrected: String,
+    evidence_url: Option<String>,
+    confidence: String,
+) -> Result<usize, String> {
+    let original = original.trim().to_string();
+    let corrected = corrected.trim().to_string();
+    if original.is_empty() || corrected.is_empty() || original == corrected {
+        return Err("原词与正词不能为空或相同".into());
+    }
+    let lib = state.lib.lock().unwrap();
+
+    // 1. 笔记:结构化字段遍历替换(绝不碰 JSON 原文),{meta, note} 包裹保持
+    let note_path = lib.note_json_path(&id);
+    let mut doc: serde_json::Value = fs::read_to_string(&note_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .ok_or("笔记还没生成")?;
+    let mut parsed: note::Note =
+        serde_json::from_value(doc.get("note").cloned().unwrap_or_default())
+            .map_err(|e| format!("笔记数据损坏: {e}"))?;
+    let count = note::replace_term(&mut parsed, &original, &corrected);
+    doc["note"] = serde_json::to_value(&parsed).map_err(|e| e.to_string())?;
+    fs::write(&note_path, serde_json::to_string_pretty(&doc).unwrap_or_default())
+        .map_err(|e| e.to_string())?;
+
+    // md 重渲:meta 优先读全量 meta/<id>.json,缺了从 note.json 的 meta 摘要重建
+    let meta: resolve::EpisodeMeta = fs::read_to_string(lib.root.join("meta").join(format!("{id}.json")))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| resolve::EpisodeMeta {
+            url: doc.pointer("/meta/url").and_then(|v| v.as_str()).unwrap_or("").into(),
+            audio_url: String::new(),
+            title: doc.pointer("/meta/title").and_then(|v| v.as_str()).unwrap_or("").into(),
+            podcast: doc.pointer("/meta/podcast").and_then(|v| v.as_str()).unwrap_or("").into(),
+            shownotes: String::new(),
+            duration: doc.pointer("/meta/durationSec").and_then(|v| v.as_u64()),
+            pub_date: None,
+        });
+    let md = note::note_to_markdown(&meta, &parsed);
+    let _ = fs::write(lib.note_md_path(&id), &md);
+    let settings = load_settings(&lib);
+    if let Some(dir) = settings.notes_dir.as_deref().filter(|d| !d.is_empty()) {
+        let base = std::path::Path::new(dir);
+        if fs::create_dir_all(base).is_ok() {
+            let _ = fs::write(base.join(format!("{}.md", meta.title.replace('/', "-"))), &md);
+        }
+    }
+
+    // 2. 字幕同步(用户决策:笔记+字幕都改)
+    let asr_path = lib.asr_path(&id);
+    if let Some(mut asr_doc) = fs::read_to_string(&asr_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+    {
+        if correct::replace_in_transcript(&mut asr_doc, &original, &corrected) > 0 {
+            let _ = fs::write(&asr_path, serde_json::to_string(&asr_doc).unwrap_or_default());
+        }
+    }
+
+    // 3. 笔记与字幕都变了,旧朗读作废
+    tts_invalidate(&lib, &id);
+
+    // 4. 记录:单集纠正(下划线标记 + 重生成兜底)+ 频道词表(prompt 注入 + 热词)
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let _ = correct::append_correction(
+        &lib.corrections_path(&id),
+        correct::CorrectionRecord {
+            original: original.clone(),
+            corrected: corrected.clone(),
+            evidence_url: evidence_url.clone(),
+            confidence: confidence.clone(),
+            ts,
+        },
+    );
+    let show = lib.get(&id).map(|r| r.show).filter(|s| !s.is_empty()).unwrap_or_else(|| meta.podcast.clone());
+    let _ = glossary::append(
+        &lib.root,
+        glossary::GlossaryEntry { show, original, corrected, evidence_url, confidence, ts },
+    );
+    Ok(count)
+}
+
+#[tauri::command]
+pub fn get_corrections(state: State<AppState>, id: String) -> Vec<correct::CorrectionRecord> {
+    let path = state.lib.lock().unwrap().corrections_path(&id);
+    correct::load_corrections(&path)
+}
+
 // ===== 管线运行器 =====
 
 #[derive(Clone, Serialize)]
@@ -588,6 +733,30 @@ fn fmt_elapsed(start: Instant) -> String {
     format!("{:02}:{:02}", s / 60, s % 60)
 }
 
+/// 建临时热词表:失败先清扫本应用前缀的残表再试一次(大概率配额满,上限 10 表),
+/// 仍失败返回 None 降级为无热词转写,不阻断管线
+async fn create_vocab_with_cleanup(
+    client: &reqwest::Client,
+    host: &str,
+    key: &str,
+    terms: &[String],
+) -> Option<String> {
+    if terms.is_empty() {
+        return None;
+    }
+    match vocab::create_vocabulary(client, host, key, terms).await {
+        Ok(id) => Some(id),
+        Err(_) => {
+            if let Ok(ids) = vocab::list_podnote_vocabularies(client, host, key).await {
+                for vid in ids {
+                    let _ = vocab::delete_vocabulary(client, host, key, &vid).await;
+                }
+            }
+            vocab::create_vocabulary(client, host, key, terms).await.ok()
+        }
+    }
+}
+
 async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
     let (client, meta_path, asr_path) = {
         let state = app.state::<AppState>();
@@ -613,11 +782,12 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
     };
 
     // --- KEY 自检:缺 key 直接指向设置页,不空跑(读内存缓存,零钥匙串访问) ---
-    let (asr_key, llm_key) = {
+    let keys = {
         let state = app.state::<AppState>();
         let keys = state.keys.lock().unwrap();
         keys.clone()
     };
+    let (asr_key, llm_key) = (keys.asr, keys.llm);
     if llm_key.is_empty() {
         fail(&app, &id, "KEY", "还没配置 LLM API Key");
         return;
@@ -658,6 +828,14 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
     }
     emit(&app, &id, "RESOLVE", "ready", &meta.title);
 
+    // LLM 配置提早构建:热词实体提取与 SUMMARIZE 共用
+    let llm = summarize::LlmConfig {
+        base_url: settings.llm_base_url.clone(),
+        api_key: llm_key,
+        model: settings.llm_model.clone(),
+        protocol: crate::pipeline::llm::Protocol::from_id(&settings.llm_api),
+    };
+
     // --- TRANSCRIBE(缓存命中即跳过) ---
     let asr_result: serde_json::Value = if asr_path.exists() {
         emit(&app, &id, "TRANSCRIBE", "ready", "缓存命中");
@@ -667,6 +845,21 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
         }
     } else {
         set_status(&app, &id, "transcribing");
+        // 热词:shownotes 实体(LLM 提取)+ 频道纠正词 → 临时词表;任何失败降级为无热词转写
+        emit(&app, &id, "TRANSCRIBE", "processing", "准备热词");
+        let terms = {
+            let root = {
+                let state = app.state::<AppState>();
+                let lib = state.lib.lock().unwrap();
+                lib.root.clone()
+            };
+            let entries = glossary::load(&root);
+            let entities =
+                vocab::extract_entities(&client, &llm, &meta.podcast, &meta.title, &meta.shownotes).await;
+            vocab::build_terms(entities, &glossary::for_show(&entries, &meta.podcast))
+        };
+        let vocab_id = create_vocab_with_cleanup(&client, &settings.asr_host, &asr_key, &terms).await;
+
         let start = Instant::now();
         let app2 = app.clone();
         let id2 = id.clone();
@@ -674,7 +867,14 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
             emit(&app2, &id2, "TRANSCRIBE", "processing", &fmt_elapsed(start));
         };
         emit(&app, &id, "TRANSCRIBE", "processing", "00:00");
-        match asr::transcribe(&client, &settings.asr_host, &asr_key, &meta.audio_url, &progress).await {
+        let outcome =
+            asr::transcribe(&client, &settings.asr_host, &asr_key, &meta.audio_url, vocab_id.as_deref(), &progress)
+                .await;
+        // 临时词表转写完即删,成功失败都删(每账号配额只有 10 个)
+        if let Some(vid) = vocab_id.as_deref() {
+            let _ = vocab::delete_vocabulary(&client, &settings.asr_host, &asr_key, vid).await;
+        }
+        match outcome {
             Ok(v) => {
                 let _ = fs::write(&asr_path, serde_json::to_string(&v).unwrap_or_default());
                 emit(&app, &id, "TRANSCRIBE", "ready", &fmt_elapsed(start));
@@ -687,19 +887,20 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
     // --- SUMMARIZE ---
     set_status(&app, &id, "summarizing");
     emit(&app, &id, "SUMMARIZE", "processing", "");
-    let llm = summarize::LlmConfig {
-        base_url: settings.llm_base_url.clone(),
-        api_key: llm_key,
-        model: settings.llm_model.clone(),
-        protocol: crate::pipeline::llm::Protocol::from_id(&settings.llm_api),
-    };
     let timed = asr::to_timed_text(&asr_result);
+    // 频道纠正词表注入 prompt:历史划词纠正过的词,笔记直出正词
+    let glossary_text = {
+        let state = app.state::<AppState>();
+        let root = state.lib.lock().unwrap().root.clone();
+        let entries = glossary::load(&root);
+        glossary::render_for_prompt(&glossary::for_show(&entries, &meta.podcast))
+    };
     let app3 = app.clone();
     let id3 = id.clone();
     let progress = move |chars: usize| {
         emit(&app3, &id3, "SUMMARIZE", "processing", &format!("{chars} 字"));
     };
-    let parsed = match summarize::summarize(&client, &llm, &meta, &timed, &progress).await {
+    let parsed = match summarize::summarize(&client, &llm, &meta, &timed, &glossary_text, &progress).await {
         Ok(n) => n,
         Err(e) => {
             // 解析失败把原始输出落盘,便于调 prompt
@@ -711,6 +912,16 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
             return fail(&app, &id, "SUMMARIZE", &e.to_string());
         }
     };
+
+    // 历史纠正兜底重放:glossary 已注入 prompt,LLM 若仍输出错词在此修正(幂等)
+    let mut parsed = parsed;
+    {
+        let state = app.state::<AppState>();
+        let lib = state.lib.lock().unwrap();
+        for c in correct::load_corrections(&lib.corrections_path(&id)) {
+            note::replace_term(&mut parsed, &c.original, &c.corrected);
+        }
+    }
 
     // --- 落盘双产物 + 可选导出 ---
     let note_json = serde_json::json!({

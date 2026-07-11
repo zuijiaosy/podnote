@@ -130,6 +130,66 @@ pub fn note_to_markdown(meta: &EpisodeMeta, note: &Note) -> String {
     out
 }
 
+/// 单串替换:纯 ASCII 词用 \b 词边界防子串误伤("No Players" 不吃 "No Playersx"),
+/// 含 CJK 直接替换(中文无词边界,替换处数由 UI 预览把关);返回 (新串, 替换处数)
+pub fn replace_in(s: &str, original: &str, corrected: &str) -> (String, usize) {
+    if original.is_empty() || original == corrected {
+        return (s.to_string(), 0);
+    }
+    if original.is_ascii() {
+        let re = regex::Regex::new(&format!(r"\b{}\b", regex::escape(original)))
+            .expect("escape 后的字面量必然合法");
+        let n = re.find_iter(s).count();
+        if n == 0 {
+            return (s.to_string(), 0);
+        }
+        (re.replace_all(s, corrected).into_owned(), n)
+    } else {
+        let n = s.matches(original).count();
+        if n == 0 {
+            return (s.to_string(), 0);
+        }
+        (s.replace(original, corrected), n)
+    }
+}
+
+/// 全笔记替换某词(划词纠正):结构化字段遍历,绝不碰 JSON 原文;返回替换处数
+pub fn replace_term(note: &mut Note, original: &str, corrected: &str) -> usize {
+    let mut count = 0;
+    let mut apply = |s: &mut String| {
+        let (new, n) = replace_in(s, original, corrected);
+        if n > 0 {
+            *s = new;
+            count += n;
+        }
+    };
+    apply(&mut note.tldr);
+    for p in &mut note.points {
+        apply(&mut p.h);
+        apply(&mut p.body);
+        if let Some(w) = &mut p.who {
+            apply(w);
+        }
+    }
+    for q in &mut note.quotes {
+        apply(&mut q.text);
+        if let Some(w) = &mut q.who {
+            apply(w);
+        }
+    }
+    for r in &mut note.resources {
+        apply(&mut r.name);
+        apply(&mut r.note);
+    }
+    for q in &mut note.questions {
+        apply(q);
+    }
+    for v in note.speakers.values_mut() {
+        apply(v);
+    }
+    count
+}
+
 /// 供调用侧把 anyhow 错误里的 raw 提出来落盘
 pub fn raw_of(err: &anyhow::Error) -> Option<&str> {
     err.downcast_ref::<ParseError>().map(|e| e.raw.as_str())
@@ -175,6 +235,41 @@ mod tests {
     #[test]
     fn garbage_errors() {
         assert!(parse_note("抱歉我做不到").is_err());
+    }
+
+    #[test]
+    fn replace_in_ascii_respects_word_boundary() {
+        let (s, n) = replace_in("听 No Players 和 No Playersx 的节目", "No Players", "No Priors");
+        assert_eq!(n, 1);
+        assert_eq!(s, "听 No Priors 和 No Playersx 的节目");
+    }
+
+    #[test]
+    fn replace_in_cjk_and_noop() {
+        let (s, n) = replace_in("面筋聊到面筋", "面筋", "面基");
+        assert_eq!((s.as_str(), n), ("面基聊到面基", 2));
+        assert_eq!(replace_in("原文", "词", "词").1, 0); // original == corrected
+        assert_eq!(replace_in("原文", "", "x").1, 0);
+        assert_eq!(replace_in("没出现", "面筋", "面基").1, 0);
+    }
+
+    #[test]
+    fn replace_term_walks_all_fields_and_is_idempotent() {
+        let mut note = Note {
+            speakers: [("S1".to_string(), "面筋".to_string())].into_iter().collect(),
+            tldr: "面筋这期讲面筋".into(),
+            points: vec![Point { ts: "01:00".into(), t: 60, who: Some("面筋".into()), h: "标题".into(), body: "嘉宾提到面筋".into() }],
+            quotes: vec![Quote { ts: "02:00".into(), t: 120, who: None, text: "面筋说的话".into() }],
+            resources: vec![Resource { name: "面筋日谈".into(), note: "无关".into() }],
+            questions: vec!["面筋是谁?".into()],
+        };
+        let n = replace_term(&mut note, "面筋", "面基");
+        assert_eq!(n, 8);
+        assert_eq!(note.tldr, "面基这期讲面基");
+        assert_eq!(note.speakers["S1"], "面基");
+        assert_eq!(note.resources[0].name, "面基日谈");
+        // 幂等:再跑一遍不再命中
+        assert_eq!(replace_term(&mut note, "面筋", "面基"), 0);
     }
 
     #[test]

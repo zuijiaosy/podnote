@@ -36,7 +36,7 @@ pub struct Library {
 
 impl Library {
     pub fn new(root: PathBuf) -> Result<Self> {
-        for sub in ["asr", "notes", "audio", "peaks"] {
+        for sub in ["asr", "notes", "audio", "peaks", "corrections"] {
             fs::create_dir_all(root.join(sub))?;
         }
         Ok(Self { root })
@@ -61,6 +61,10 @@ impl Library {
     /// 波形峰值缓存(前端 Web Audio 首次解码后写入)
     pub fn peaks_path(&self, id: &str) -> PathBuf {
         self.root.join("peaks").join(format!("{id}.json"))
+    }
+    /// 划词纠正记录(重生成时兜底重放;删除剧集时一并清理)
+    pub fn corrections_path(&self, id: &str) -> PathBuf {
+        self.root.join("corrections").join(format!("{id}.json"))
     }
     pub fn find_audio(&self, id: &str) -> Option<PathBuf> {
         let dir = self.root.join("audio");
@@ -111,7 +115,7 @@ impl Library {
     pub fn remove(&self, id: &str) -> Result<()> {
         let eps: Vec<_> = self.list().into_iter().filter(|e| e.id != id).collect();
         self.save_all(&eps)?;
-        for p in [self.asr_path(id), self.note_json_path(id), self.note_md_path(id), self.peaks_path(id)] {
+        for p in [self.asr_path(id), self.note_json_path(id), self.note_md_path(id), self.peaks_path(id), self.corrections_path(id)] {
             let _ = fs::remove_file(p);
         }
         if let Some(p) = self.find_audio(id) {

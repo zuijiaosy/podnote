@@ -5,9 +5,32 @@
 //   pncli tts <note.json> [voice]   朗读合成:分段调 qwen3-tts-flash,产物写 ./tts-out/
 // 复用仓库根 data/<slug>.asr.json 缓存与 notes/ 输出约定
 use anyhow::{bail, Context, Result};
-use app_lib::pipeline::{asr, note, resolve, summarize, tts};
+use app_lib::pipeline::{asr, correct, note, resolve, summarize, tts, vocab};
 use std::fs;
 use std::path::Path;
+
+/// LLM 配置(与主流程同一套 env:PI_BASE_URL / PI_API_KEY / PI_MODEL / PI_API)
+fn llm_from_env() -> summarize::LlmConfig {
+    summarize::LlmConfig {
+        base_url: std::env::var("PI_BASE_URL").unwrap_or_else(|_| "https://api.codexzh.com/v1".into()),
+        api_key: std::env::var("PI_API_KEY")
+            .or_else(|_| std::env::var("OPENAI_API_KEY"))
+            .unwrap_or_default(),
+        model: std::env::var("PI_MODEL").unwrap_or_else(|_| "grok-4.5".into()),
+        // 与 Node CLI 的 PI_API 同名同义:openai-responses | openai-completions | anthropic-messages
+        protocol: app_lib::pipeline::llm::Protocol::from_id(
+            &std::env::var("PI_API").unwrap_or_default(),
+        ),
+    }
+}
+
+fn asr_env() -> (String, String) {
+    let key = std::env::var("BAILIAN_API_KEY")
+        .or_else(|_| std::env::var("DASHSCOPE_API_KEY"))
+        .unwrap_or_default();
+    let host = std::env::var("BAILIAN_HOST").unwrap_or_else(|_| asr::DEFAULT_HOST.into());
+    (key, host)
+}
 
 fn slugify(title: &str) -> String {
     // 注意:JS 的 \w 是 ASCII-only,Rust 的 \w 含 Unicode Join_Control(如 emoji 里的零宽连接符)
@@ -80,29 +103,94 @@ async fn cmd_tts(path: Option<&String>, voice: Option<&String>) -> Result<()> {
     Ok(())
 }
 
+/// pncli vocab <单集链接> — 实测热词链路:提实体 → 建临时词表 → 删除(不转写)
+async fn cmd_vocab(arg: Option<&String>) -> Result<()> {
+    let url = arg.context("用法: pncli vocab <单集链接>")?;
+    let (asr_key, host) = asr_env();
+    if asr_key.is_empty() {
+        bail!("需要 BAILIAN_API_KEY");
+    }
+    let client = reqwest::Client::new();
+    let meta = resolve::resolve_episode(&client, url).await?;
+    println!("节目: {} — {}", meta.podcast, meta.title);
+    println!("shownotes {} 字", meta.shownotes.chars().count());
+    let llm = llm_from_env();
+    let entities = vocab::extract_entities(&client, &llm, &meta.podcast, &meta.title, &meta.shownotes).await;
+    println!("提取实体 {} 个: {entities:?}", entities.len());
+    let terms = vocab::build_terms(entities, &[]);
+    if terms.is_empty() {
+        bail!("没有可用热词(shownotes 为空或提取失败)");
+    }
+    let vid = vocab::create_vocabulary(&client, &host, &asr_key, &terms).await?;
+    println!("✅ 词表已创建: {vid} ({} 词)", terms.len());
+    vocab::delete_vocabulary(&client, &host, &asr_key, &vid).await?;
+    println!("✅ 词表已删除");
+    let rest = vocab::list_podnote_vocabularies(&client, &host, &asr_key).await?;
+    println!("剩余 podnote 前缀词表: {}", rest.len());
+    Ok(())
+}
+
+/// pncli research <词> "<上下文>" [节目名] — 冒烟整条查证链(需 TAVILY_API_KEY)
+async fn cmd_research(args: &[String]) -> Result<()> {
+    let term = args.first().context("用法: pncli research <词> \"<上下文>\" [节目名]")?;
+    let context = args.get(1).cloned().unwrap_or_default();
+    let podcast = args.get(2).cloned().unwrap_or_default();
+    let tavily_key = std::env::var("TAVILY_API_KEY").context("需要 TAVILY_API_KEY")?;
+    let llm = llm_from_env();
+    if llm.api_key.is_empty() {
+        bail!("需要 PI_API_KEY(LLM)");
+    }
+    let client = reqwest::Client::new();
+    let started = std::time::Instant::now();
+    let v = correct::research_term(&client, &llm, &tavily_key, &podcast, term, &context).await?;
+    println!("{}", serde_json::to_string_pretty(&v)?);
+    println!("耗时 {:.1}s", started.elapsed().as_secs_f64());
+    Ok(())
+}
+
+/// pncli correct <note.json> <原词> <正词> — 离线测全文替换 + md 重渲,写 .corrected 副本不覆盖原文件
+fn cmd_correct(args: &[String]) -> Result<()> {
+    let (path, original, corrected) = match args {
+        [p, o, c, ..] => (p, o, c),
+        _ => bail!("用法: pncli correct <note.json> <原词> <正词>"),
+    };
+    let doc: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    let mut n: note::Note = serde_json::from_value(doc.get("note").cloned().unwrap_or(doc.clone()))?;
+    let count = note::replace_term(&mut n, original, corrected);
+    println!("笔记替换 {count} 处");
+    let meta = resolve::EpisodeMeta {
+        url: doc.pointer("/meta/url").and_then(|v| v.as_str()).unwrap_or("").into(),
+        audio_url: String::new(),
+        title: doc.pointer("/meta/title").and_then(|v| v.as_str()).unwrap_or("无标题").into(),
+        podcast: doc.pointer("/meta/podcast").and_then(|v| v.as_str()).unwrap_or("").into(),
+        shownotes: String::new(),
+        duration: doc.pointer("/meta/durationSec").and_then(|v| v.as_u64()),
+        pub_date: None,
+    };
+    let out_json = format!("{path}.corrected.json");
+    let out_md = format!("{path}.corrected.md");
+    fs::write(&out_json, serde_json::to_string_pretty(&serde_json::json!({ "meta": doc.get("meta"), "note": n }))?)?;
+    fs::write(&out_md, note::note_to_markdown(&meta, &n))?;
+    println!("✅ 副本已写入: {out_json}\n           {out_md}");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("feed") => return cmd_feed(args.get(1)).await,
         Some("tts") => return cmd_tts(args.get(1), args.get(2)).await,
+        Some("vocab") => return cmd_vocab(args.get(1)).await,
+        Some("research") => return cmd_research(&args[1..]).await,
+        Some("correct") => return cmd_correct(&args[1..]),
         _ => {}
     }
-    let url = args.into_iter().next().context("用法: pncli <单集链接> | feed <节目链接> | tts <note.json>")?;
-    let asr_key = std::env::var("BAILIAN_API_KEY")
-        .or_else(|_| std::env::var("DASHSCOPE_API_KEY"))
-        .unwrap_or_default();
-    let llm = summarize::LlmConfig {
-        base_url: std::env::var("PI_BASE_URL").unwrap_or_else(|_| "https://api.codexzh.com/v1".into()),
-        api_key: std::env::var("PI_API_KEY")
-            .or_else(|_| std::env::var("OPENAI_API_KEY"))
-            .unwrap_or_default(),
-        model: std::env::var("PI_MODEL").unwrap_or_else(|_| "grok-4.5".into()),
-        // 与 Node CLI 的 PI_API 同名同义:openai-responses | openai-completions | anthropic-messages
-        protocol: app_lib::pipeline::llm::Protocol::from_id(
-            &std::env::var("PI_API").unwrap_or_default(),
-        ),
-    };
+    let url = args.into_iter().next().context(
+        "用法: pncli <单集链接> | feed <节目链接> | tts <note.json> | vocab <单集链接> | research <词> \"<上下文>\" | correct <note.json> <原词> <正词>",
+    )?;
+    let (asr_key, _) = asr_env();
+    let llm = llm_from_env();
     let client = reqwest::Client::new();
 
     println!("== 1/3 解析单集 ==");
@@ -119,7 +207,8 @@ async fn main() -> Result<()> {
         serde_json::from_str(&fs::read_to_string(&asr_path)?)?
     } else {
         let host = std::env::var("BAILIAN_HOST").unwrap_or_else(|_| asr::DEFAULT_HOST.into());
-        let r = asr::transcribe(&client, &host, &asr_key, &meta.audio_url, &|st, extra| {
+        let vocab_id = std::env::var("PN_VOCAB_ID").ok(); // 可选:已有词表 id 直接挂上
+        let r = asr::transcribe(&client, &host, &asr_key, &meta.audio_url, vocab_id.as_deref(), &|st, extra| {
             println!("[asr] {st} {extra}");
         })
         .await?;
@@ -130,7 +219,7 @@ async fn main() -> Result<()> {
 
     println!("== 3/3 生成笔记 ==");
     let timed = asr::to_timed_text(&asr_result);
-    let n = match summarize::summarize(&client, &llm, &meta, &timed, &|chars| {
+    let n = match summarize::summarize(&client, &llm, &meta, &timed, "", &|chars| {
         print!("\r[llm] {chars} chars   ");
     })
     .await

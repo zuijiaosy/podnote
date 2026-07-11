@@ -15,12 +15,17 @@ pub async fn transcribe(
     host: &str,
     key: &str,
     audio_url: &str,
+    vocabulary_id: Option<&str>,
     progress: Progress<'_>,
 ) -> Result<Value> {
     if key.is_empty() {
         bail!("缺少百炼 API Key");
     }
 
+    let mut parameters = json!({ "diarization_enabled": true, "language_hints": ["zh"] });
+    if let Some(vid) = vocabulary_id {
+        parameters["vocabulary_id"] = json!(vid);
+    }
     let submitted: Value = client
         .post(format!("{host}/api/v1/services/audio/asr/transcription"))
         .bearer_auth(key)
@@ -28,7 +33,7 @@ pub async fn transcribe(
         .json(&json!({
             "model": "fun-asr",
             "input": { "file_urls": [audio_url] },
-            "parameters": { "diarization_enabled": true, "language_hints": ["zh"] },
+            "parameters": parameters,
         }))
         .send()
         .await

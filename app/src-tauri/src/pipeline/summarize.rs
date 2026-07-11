@@ -15,7 +15,7 @@ const SYSTEM_PROMPT: &str =
     "你是一个中文播客笔记助手。只输出一个合法的 JSON 对象,不要 Markdown 代码块,不要任何前言后语。";
 const MAX_TRIES: usize = 2;
 
-pub fn build_prompt(meta: &EpisodeMeta, timed_text: &str) -> String {
+pub fn build_prompt(meta: &EpisodeMeta, timed_text: &str, glossary: &str) -> String {
     PROMPT_TEMPLATE
         .replace("{{title}}", &meta.title)
         .replace("{{podcast}}", &meta.podcast)
@@ -23,6 +23,7 @@ pub fn build_prompt(meta: &EpisodeMeta, timed_text: &str) -> String {
             "{{shownotes}}",
             if meta.shownotes.is_empty() { "(无)" } else { &meta.shownotes },
         )
+        .replace("{{glossary}}", if glossary.is_empty() { "(无)" } else { glossary })
         .replace("{{transcript}}", timed_text)
 }
 
@@ -34,12 +35,13 @@ pub async fn summarize(
     cfg: &LlmConfig,
     meta: &EpisodeMeta,
     timed_text: &str,
+    glossary: &str,
     progress: Progress<'_>,
 ) -> Result<Note> {
     if cfg.api_key.is_empty() {
         bail!("缺少 LLM API Key");
     }
-    let prompt = build_prompt(meta, timed_text);
+    let prompt = build_prompt(meta, timed_text, glossary);
     let mut last_err = None;
     for _attempt in 0..MAX_TRIES {
         match run_once(client, cfg, &prompt, progress).await {
@@ -78,11 +80,24 @@ mod tests {
             title: "标题X".into(), podcast: "节目Y".into(),
             shownotes: String::new(), duration: None, pub_date: None,
         };
-        let p = build_prompt(&meta, "[00:01] S1: 你好");
+        let p = build_prompt(&meta, "[00:01] S1: 你好", "");
         assert!(p.contains("标题X"));
         assert!(p.contains("节目Y"));
         assert!(p.contains("(无)"));
         assert!(p.contains("[00:01] S1: 你好"));
         assert!(!p.contains("{{"));
+    }
+
+    #[test]
+    fn prompt_injects_glossary() {
+        let meta = EpisodeMeta {
+            url: "u".into(), audio_url: "a".into(),
+            title: "T".into(), podcast: "P".into(),
+            shownotes: String::new(), duration: None, pub_date: None,
+        };
+        let p = build_prompt(&meta, "x", "面筋 → 面基\nNo Players → No Priors");
+        assert!(p.contains("面筋 → 面基"));
+        assert!(p.contains("No Players → No Priors"));
+        assert!(!p.contains("{{glossary}}"));
     }
 }
