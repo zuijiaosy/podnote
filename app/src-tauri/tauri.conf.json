@@ -23,7 +23,10 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/audio/**", "$APPDATA/tts/**"]
+        "scope": [
+          "$APPDATA/audio/**",
+          "$APPDATA/tts/**"
+        ]
       }
     }
   },
@@ -36,6 +39,8 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
-  }
+    ],
+    "licenseFile": "../../LICENSE"
+  },
+  "mainBinaryName": "Podnote"
 }

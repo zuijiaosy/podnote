@@ -1,64 +1,98 @@
-# podnote
+# Podnote
 
-小宇宙单集链接 → 云端转写(百炼 fun-asr,含说话人分离) → LLM 生成带归属的结构化笔记。
+本地单机的播客笔记仪器(macOS / Windows beta)。
 
-这是 MVP 第一刀:纯管线,无界面。目标是验证两个核心体验——转写质量和笔记质量。这两个满意了,再做 Tauri 壳。
+粘贴一条[小宇宙](https://www.xiaoyuzhoufm.com/)单集链接 → 云端转写(阿里百炼 fun-asr,含说话人分离)→ LLM 生成带归属的结构化中文笔记。笔记是收听的伴生品:每条观点、每句原话都带时间戳,点击回跳重听,而不是替代收听。
 
-## 准备(一次性)
+## 产品哲学
+
+- **自带 API 钥匙(BYO-key)**:你用自己的百炼 / LLM 网关 / Tavily 密钥,费用直接付给服务商,本项目不经手、不抽成、无后端
+- **数据在本机**:单集库、转写稿、笔记、设置全部存在本地应用数据目录,没有账号体系
+- **花钱的动作显式触发**:转写、生成笔记、朗读、核查,每一次都由你亲手点击,成本透明
+- **三层专有名词纠错**:shownotes 词表 → fun-asr 热词 → 划词/块级搜索查证,错听的节目名和人名可以一路修到底并沉淀成频道词表
+
+## 功能
+
+- 订阅自动化:节目更新自动转写生成笔记 + 系统通知
+- 结构化笔记:TLDR / 带归属的核心观点 / 值得记住的话 / 资源与问题,时间戳回跳
+- 单集 AI 问答:基于完整转写稿提问,答案里的时间戳可点击回跳,token 用量透明
+- 笔记导出:Obsidian 友好的 Markdown(可选 wikilink),manifest 记账,永不覆盖你改过的文件
+- 笔记朗读:qwen3-tts 分段合成、跟随高亮、独立倍速
+- 划词纠正:右键「核实」搜索查证,全文替换并沉淀词表
+
+## 安装
+
+从 [Releases](../../releases) 下载对应平台的安装包。安装包**未做代码签名**(个人项目,无签名证书),系统会有相应提示:
+
+**macOS**(Apple Silicon / Intel 两个 dmg):首次打开如提示"无法验证开发者",请在访达中**右键 App → 打开**;若仍被拦,可对从官方 Releases 下载的文件解除隔离:
 
 ```bash
-# 1. Node 依赖
-npm install
-
-# 2. 凭证
-export BAILIAN_API_KEY=...   # 阿里百炼(转写)
-export PI_API_KEY=...        # LLM 网关(笔记生成)
+xattr -dr com.apple.quarantine /Applications/Podnote.app
 ```
 
-## 运行
+**Windows(beta)**:SmartScreen 会提示"未知发布者",点「更多信息 → 仍要运行」。安装过程可能需要联网下载 WebView2 Runtime(Windows 10/11 通常已内置)。Windows 版尚未经过大规模真机验证,遇到问题请提 Issue。
 
-```bash
-node src/index.mjs https://www.xiaoyuzhoufm.com/episode/xxxx
-```
+## 首次配置
 
-管线三步:解析单集(拿到公网音频 URL,不下载音频)→ 云端异步转写(一小时音频约 3-5 分钟,逐句带说话人标签)→ LLM 生成笔记(先建立说话人→真名映射,观点和引用都带归属)。
+设置页需要填两把钥匙才能跑通完整管线:
 
-产物:
-
-- `data/<slug>.asr.json` — 转写结果缓存(逐句时间戳 + speaker_id),重跑自动跳过
-- `notes/<slug>.md` — 给人读的 Markdown 笔记
-- `notes/<slug>.json` — 结构化数据(speakers/tldr/points/quotes/resources/questions,时间戳带秒数,schema 与设计稿 view-model 对齐,将来直接喂给 Tauri 前端)
-
-改 `prompts/note.md` 后重跑,只花 LLM 那一步的钱和时间。
-
-## 可调项(环境变量)
-
-| 变量 | 默认 | 说明 |
+| 钥匙 | 用途 | 获取 |
 |---|---|---|
-| `BAILIAN_API_KEY` | 无 | 百炼转写密钥,必填(也接受 `DASHSCOPE_API_KEY`) |
-| `BAILIAN_HOST` | 专属网关地址 | 百炼 API host |
-| `PI_API_KEY` (或 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`) | 无 | 笔记 LLM 密钥,必填 |
-| `PI_MODEL` / `PI_PROVIDER` | `grok-4.5` / `codexzh` | 笔记模型与 provider 标识 |
-| `PI_BASE_URL` | `https://api.codexzh.com/v1` | LLM 网关地址;置空回落 pi 内置目录(官方 anthropic 等) |
-| `PI_API` | `openai-responses` | LLM 协议:`openai-responses` / `openai-completions` / `anthropic-messages` |
-| `NOTES_DIR` | `notes` | 笔记输出目录,可直接指到你的笔记库 |
+| 百炼 API Key | 转写(fun-asr)与朗读(qwen3-tts) | [阿里云百炼](https://bailian.console.aliyun.com/) |
+| LLM 网关 | 笔记生成与问答 | 任意 OpenAI Responses / Chat Completions / Anthropic Messages 协议的服务,地址和模型自填 |
+| Tavily API Key(可选) | 专有名词搜索查证 | [tavily.com](https://tavily.com/) |
 
-## 已知的脆弱点
+LLM 网关地址与模型**默认为空**是有意的设计:你的 key 会随请求发往网关,默认指向任何第三方都等于替你做了安全决定。设置页的「连接自检」会发最小真实请求验证配置。
 
-- **小宇宙页面解析**(`src/resolve.mjs`):走 og:audio meta + `__NEXT_DATA__` 双路兜底,但没有官方 API,页面改版需要跟着修。挂了的话把页面 HTML 丢给 AI 重新定位字段即可。
-- **fun-asr 转写**(`src/asr.mjs`):走 dashscope 标准异步 API(专属 host)。说话人分离官方建议音频 ≤2 小时;节目名等专有名词偶有错听(如"硬地骇客"→"一粒骇客"),LLM 有 shownotes 兜底,后续可加热词表。
-- **pi-ai API 版本**:`getModel` 目前在 `@earendil-works/pi-ai/compat` 保留(已标 deprecated)。如果 import 报错,按 pi 仓库 `packages/agent` 的 README 调整 `src/summarize.mjs`。
+## 隐私边界(请读一遍)
 
-## 路线图
+Podnote 没有自己的服务器,但启用相应功能时,必要数据会发往你配置或明确标注的第三方:
 
-已完成:Tauri 2 桌面应用(`app/`)——订阅自动化(节目更新自动转写生成笔记 + 系统通知)、
-收件箱模型(未读/归档/频道筛选/快捷键 E)、笔记朗读(qwen3-tts-flash 分段合成、渐进播放、
-跟随高亮、独立倍速)、浏览器模拟实况自测模式(`?mock=1`)与 pncli 自测子命令(`feed`/`tts`)。
+- 解析单集与订阅检查时,会请求小宇宙页面
+- **音频 URL** 会提交给阿里百炼转写(音频本身不经过本机上传)
+- shownotes、转写稿、你的提问、纠错上下文会发送给**你配置的 LLM 网关**
+- 朗读文本会发送给阿里百炼 TTS
+- 核查功能的搜索词会发送给 Tavily
+- API key **明文**保存在本机应用数据目录的 `keys.json`(无签名证书时钥匙串会反复弹窗的取舍,介意请勿在共用机器上使用)
+- 订阅自动处理默认开启,每 30 分钟联网检查一次,自动转写会产生百炼费用
 
-**下一阶段(已定方向,暂缓启动):检索与对话**
+## 从源码构建
 
-1. 笔记与转写内容入库——届时再引入 SQLite + 全文索引;当前数据量下 JSON 文件够用,不提前上
-2. 全库检索——按内容找回"某人在某集说过的话",笔记(观点/金句)与逐句转写都可检索
-3. AI 对话——给 agent 挂检索工具,实现"跟我听过的所有播客对话"(第二大脑,价值随积累复利)
+依赖:Node 22+、Rust stable、[Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)。
 
-注意:转写走云端,音频 URL 会提交给阿里百炼——设计稿里"转写在本地进行"的文案在 Tauri 阶段要同步修改。
+```bash
+cd app
+npm ci
+npm run tauri dev      # 开发模式
+npm run tauri build    # 打包(产物在 app/src-tauri/target/release/bundle/)
+```
+
+不装 Rust 也能看界面:`cd app && npx vite`,浏览器打开加 `?mock=1` 是内存假后端的全流程自测模式,不带参数是静态样张的设计评审模式。
+
+中国大陆网络环境可在本地建 `.cargo/config.toml` 配置 crates.io 镜像(该文件已 gitignore,不会入库)。
+
+```bash
+# 检查与测试
+cd app/src-tauri && cargo test
+cd app && npm run build
+```
+
+## 架构一页
+
+- `app/src/` — React 前端,仪器风设计系统(自绘控件,设计真源在 `design/`)
+- `app/src-tauri/src/commands.rs` — 全部 Tauri 命令与管线运行器
+- `app/src-tauri/src/pipeline/` — resolve(解析)→ asr(转写)→ summarize(笔记)三段管线,加 llm(三协议流式客户端)、tts、correct/agent/tavily(纠错查证)、glossary(词表)
+- `prompts/*.md` — 全部 LLM prompt,编译期 `include_str!` 内嵌,改动需重编译
+- 笔记 schema:`{speakers, tldr, points[{ts,who,h,body}], quotes, resources, questions}`,时间戳必须来自转写稿,说话人归属禁止靠猜
+
+更多开发细节见 [CLAUDE.md](CLAUDE.md)(同样适用于人类贡献者)。
+
+## 已知边界
+
+- 小宇宙页面解析没有官方 API,页面改版需要跟修(`pipeline/resolve.rs`)
+- fun-asr 说话人分离官方建议音频 ≤2 小时
+- Windows 版为 beta:通知、Explorer 定位、音频解码、波形提取尚未经大规模真机验证
+
+## License
+
+[MIT](LICENSE)

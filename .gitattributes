@@ -1,0 +1,2 @@
+# 设计稿是大型自包含 HTML 导出物,不参与语言统计与 diff 展示
+design/*.html linguist-generated

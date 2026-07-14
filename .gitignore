@@ -5,8 +5,8 @@ node_modules/
 data/
 notes/
 
-# whisper 模型（体积大，按 README 自行下载）
-models/
+# 本地 cargo 配置(国内镜像等个人环境配置,不入库)
+/.cargo/config.toml
 
 # 工具状态
 .omc/

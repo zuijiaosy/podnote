@@ -1,9 +1,11 @@
 [package]
 name = "app"
 version = "0.1.0"
-description = "Podnote — 播客记忆仪器"
-authors = ["lin"]
+description = "Podnote — 本地单机的播客笔记仪器"
+authors = ["Podnote contributors"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/zuijiaosy/podnote"
 default-run = "app"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
