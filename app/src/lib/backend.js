@@ -1,6 +1,6 @@
 // backend — Tauri 命令与事件的前端桥
 // 浏览器环境:默认设计评审模式(DemoApp);带 ?mock=1 时为模拟实况模式(LiveApp + 内存假后端,自测用)
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { mockApi } from "./mock.js";
 
@@ -54,10 +54,22 @@ const realApi = {
     invoke("apply_correction", { id, original, corrected, evidenceUrl: evidenceUrl ?? null, confidence }),
   /** 单集纠正记录(下划线标记数据源) */
   getCorrections: (id) => invoke("get_corrections", { id }),
+  /** 块级核查:AgentEvent 经 Channel 流式回调 onEvent;resolve 即整条跑完(reject = 出错/取消) */
+  researchBlocks: (id, reqId, blocks, onEvent) => {
+    const channel = new Channel();
+    channel.onmessage = onEvent;
+    return invoke("research_blocks", { id, reqId, blocks, channel });
+  },
+  /** 中止块级核查(关抽屉/切集时调) */
+  cancelResearch: (reqId) => invoke("cancel_research", { reqId }),
   getSettings: () => invoke("get_settings"),
   setSettings: (settings) => invoke("set_settings", { settings }),
   setKeys: (asrKey, llmKey, tavilyKey) =>
     invoke("set_keys", { asrKey: asrKey ?? null, llmKey: llmKey ?? null, tavilyKey: tavilyKey ?? null }),
+  /** 连接自检:各发一个最小真实请求,验证密钥/网关/协议/模型真的能用 */
+  testAsrKey: () => invoke("test_asr_key"),
+  testLlm: () => invoke("test_llm"),
+  testTavily: () => invoke("test_tavily"),
   getSubscriptions: () => invoke("get_subscriptions"),
   addSubscription: (url) => invoke("add_subscription", { url }),
   removeSubscription: (pid) => invoke("remove_subscription", { pid }),

@@ -40,11 +40,17 @@ export function DemoApp() {
     }}>
       {view === "settings" ? (
         <Settings
-          view={{ llmModel: "grok-4.5", notesDir: "~/Documents/Podnote", asrKeySet: false, llmKeySet: false, subAuto: true }}
-          subs={[{ pid: "demo", title: "硬地骇客", lastPub: "2026-06-09T14:02:10.100Z" }]}
+          view={{
+            llmBaseUrl: "", llmModel: "", notesDir: "~/Documents/Podnote",
+            asrKeySet: true, asrKeyHint: "k3f8", llmKeySet: false, tavilyKeySet: false, subAuto: true,
+          }}
           onChangeField={() => {}}
           onSaveKeys={() => {}}
           onChooseDir={() => {}}
+          onTestAsr={() => new Promise((r) => setTimeout(r, 900))}
+          onTestLlm={() => new Promise((_, j) => setTimeout(() => j("缺少 LLM API Key"), 1300))}
+          subsCount={1}
+          onGoSubs={() => {}}
           onBack={() => setView("notes")}
         />
       ) : (

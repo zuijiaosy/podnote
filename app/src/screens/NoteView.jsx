@@ -2,11 +2,13 @@
 // 布局与「Podnote 正式设计 standalone.html」一致;who 归属为宪法 v2 修正新增
 // 划词纠正:选中可疑词 → 浮层核实(LLM+搜索) → 确认替换全文;纠正过的词虚线下划线可溯源
 import { useEffect, useRef, useState } from "react";
-import { Button } from "../components/core.jsx";
+import { Button, Checkbox } from "../components/core.jsx";
 import { StatusLabel, IndicatorLight, Timestamp, Waveform } from "../components/instrument.jsx";
 import { Transcript } from "./Transcript.jsx";
+import { ResearchDrawer } from "./ResearchDrawer.jsx";
 import { fmt } from "../lib/format.js";
 import { openExternal } from "../lib/backend.js";
+import { startSession, reduceEvent } from "../lib/research.js";
 
 /** 纠正过的词加虚线下划线,悬停显示原词与依据;锚定正词(重生成后 LLM 直出正词,标记依然命中) */
 function Marked({ text, corrections }) {
@@ -45,8 +47,8 @@ function Marked({ text, corrections }) {
   );
 }
 
-/** 右键菜单:核实选中词 / 继续多选(仅收起菜单,选区保留) */
-function ContextMenu({ menu, onVerify, onClose }) {
+/** 右键菜单:划词模式(核实选中词/继续多选) | 块模式(核查选中分块/取消多选) */
+function ContextMenu({ menu, onVerify, onVerifyBlocks, onClearPicks, onClose }) {
   const item = (label, { disabled, onClick } = {}) => (
     <button
       onClick={disabled ? undefined : onClick}
@@ -74,13 +76,22 @@ function ContextMenu({ menu, onVerify, onClose }) {
         animation: "pn-pop var(--dur) var(--ease) both",
       }}
     >
-      {item(
-        menu.term
-          ? `核实「${menu.term.length > 16 ? `${menu.term.slice(0, 16)}…` : menu.term}」`
-          : menu.tooLong ? "选中内容太长" : "先选中要核实的词",
-        { disabled: !menu.term, onClick: onVerify }
+      {menu.block ? (
+        <>
+          {item(menu.count > 1 ? `核查选中的 ${menu.count} 个分块` : "核查该分块", { onClick: onVerifyBlocks })}
+          {item("取消多选", { onClick: onClearPicks })}
+        </>
+      ) : (
+        <>
+          {item(
+            menu.term
+              ? `核实「${menu.term.length > 16 ? `${menu.term.slice(0, 16)}…` : menu.term}」`
+              : menu.tooLong ? "选中内容太长" : "先选中要核实的词",
+            { disabled: !menu.term, onClick: onVerify }
+          )}
+          {item("继续多选", { onClick: onClose })}
+        </>
       )}
-      {item("继续多选", { onClick: onClose })}
     </div>
   );
 }
@@ -243,7 +254,7 @@ function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate }) {
 }
 
 /** 阅读井容器:NOTES(笔记,默认) / TRANSCRIPT(逐句字幕) 双 tab */
-function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, ttsSeg, onRegenerateNote, onRegenerateTranscript, corrections, onResearchTerm, onApplyCorrection }) {
+function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, ttsSeg, onRegenerateNote, onRegenerateTranscript, corrections, onResearchTerm, onApplyCorrection, onStartResearch }) {
   const [tab, setTab] = useState("notes");
   useEffect(() => setTab("notes"), [ep.id]);
   useEffect(() => {
@@ -310,6 +321,7 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
         <Reader
           key={ep.id} ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} ttsSeg={ttsSeg}
           corrections={corrections} onResearchTerm={onResearchTerm} onApplyCorrection={onApplyCorrection}
+          onStartResearch={onStartResearch}
         />
       ) : (
         <Transcript
@@ -324,7 +336,7 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
   );
 }
 
-function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm, onApplyCorrection }) {
+function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm, onApplyCorrection, onStartResearch }) {
   const note = ep.note;
   const mkSeek = (t) => () => onSeekFrac(t / ep.durationSec);
   const isActive = (t) => Math.abs(t / ep.durationSec - playFrac) < 0.015;
@@ -343,7 +355,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
   const M = (text) => <Marked text={text} corrections={corrections} />;
 
   // ===== 划词纠正:选中 → 右键菜单「核实」→ 浮层(都在滚动内容里,随文滚动) =====
-  const [menu, setMenu] = useState(null); // {term, context, tooLong, top, left}
+  const [menu, setMenu] = useState(null); // 划词 {term, context, tooLong, top, left} | 块 {block:true, count, top, left}
   const [sel, setSel] = useState(null); // {term, context, top, left}
   const [phase, setPhase] = useState("loading");
   const [verdict, setVerdict] = useState(null);
@@ -351,19 +363,45 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
   const [applyMsg, setApplyMsg] = useState("");
   const reqRef = useRef(0);
   const closeSel = () => { reqRef.current += 1; setSel(null); setMenu(null); setVerdict(null); setErr(""); };
+  // ===== 块级多选:无选区右键落块 → 选中进多选模式,块前浮出多选框 =====
+  const [picked, setPicked] = useState(() => new Set()); // blockId 集合
+  const togglePick = (id) => setPicked((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") closeSel(); };
+    const onKey = (e) => { if (e.key === "Escape") { closeSel(); setPicked(new Set()); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  /** 右键 → 自定义菜单(选区保留;「继续多选」仅收起菜单) */
+  /** 右键 → 自定义菜单。消歧:有文字选区走划词核实;无选区落在块上走块级多选 */
   const onContextMenu = (e) => {
     const cont = contRef.current;
     if (!cont) return;
     e.preventDefault();
     const s = window.getSelection();
     let text = (s?.toString() ?? "").trim().replace(/\s*\n\s*/g, " ");
+    if (!text) {
+      const blockEl = e.target.closest?.("[data-block]");
+      if (blockEl) {
+        const next = new Set(picked);
+        next.add(blockEl.getAttribute("data-block"));
+        setPicked(next);
+        const cr = cont.getBoundingClientRect();
+        reqRef.current += 1;
+        setSel(null);
+        setVerdict(null);
+        setErr("");
+        setMenu({
+          block: true, count: next.size,
+          top: e.clientY - cr.top + cont.scrollTop + 4,
+          left: Math.min(Math.max(e.clientX - cr.left + cont.scrollLeft, 8), Math.max(cr.width - 300, 8)),
+        });
+        return;
+      }
+    }
     let tooLong = false;
     if (text.length > 60) {
       text = "";
@@ -413,6 +451,43 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
     setSel(target);
     research(target);
   };
+  /** 菜单选「核查分块」:按阅读顺序收块文本(取当前值,已应用的纠正自然带上)→ 开抽屉 */
+  const verifyBlocksFromMenu = () => {
+    const data = (id) => {
+      if (id === "tldr") return { text: note.tldr ?? "", who: "", ts: "" };
+      const m = id.match(/^(point|quote|res)-(\d+)$/);
+      if (!m) return null;
+      const i = Number(m[2]);
+      if (m[1] === "point") {
+        const p = note.points[i];
+        return p && { text: `${p.h}。${p.body}`, who: p.who ?? "", ts: p.ts ?? "" };
+      }
+      if (m[1] === "quote") {
+        const q = note.quotes[i];
+        return q && { text: q.text, who: q.who ?? "", ts: q.ts ?? "" };
+      }
+      const r = note.resources[i];
+      return r && { text: [r.name, r.note].filter(Boolean).join(":"), who: "", ts: "" };
+    };
+    const order = [
+      "tldr",
+      ...note.points.map((_, i) => `point-${i}`),
+      ...note.quotes.map((_, i) => `quote-${i}`),
+      ...note.resources.map((_, i) => `res-${i}`),
+    ];
+    const blocks = order.filter((id) => picked.has(id)).map(data).filter(Boolean);
+    if (!blocks.length) return;
+    setMenu(null);
+    setPicked(new Set());
+    onStartResearch?.(blocks);
+  };
+  const clearPicks = () => { setPicked(new Set()); setMenu(null); };
+  /** 多选模式下块前浮出的多选框(负偏移进左侧留白,不挤压原文) */
+  const PickBox = ({ id, top = 2 }) => (picked.size > 0 ? (
+    <span style={{ position: "absolute", left: -28, top, animation: "pn-pop var(--dur) var(--ease) both" }}>
+      <Checkbox checked={picked.has(id)} onChange={() => togglePick(id)} />
+    </span>
+  ) : null);
   const doResearch = () => { if (sel) research(sel); }; // error 态「重试」
   const doApply = async () => {
     if (!sel || !verdict?.corrected) return;
@@ -437,7 +512,12 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
       onMouseDown={() => { if (menu) setMenu(null); }}
       style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative", animation: "pn-enter var(--dur-slow) var(--ease) both" }}
     >
-      {menu && <ContextMenu menu={menu} onVerify={verifyFromMenu} onClose={() => setMenu(null)} />}
+      {menu && (
+        <ContextMenu
+          menu={menu} onVerify={verifyFromMenu} onClose={() => setMenu(null)}
+          onVerifyBlocks={verifyBlocksFromMenu} onClearPicks={clearPicks}
+        />
+      )}
       {sel && (
         <CorrectionPopover
           sel={sel} phase={phase} verdict={verdict} err={err} applyMsg={applyMsg}
@@ -445,13 +525,15 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
         />
       )}
       <div style={{ maxWidth: 648, margin: "0 auto", padding: "24px 40px 48px", boxSizing: "border-box" }}>
-        <div data-tts="tldr" style={{
+        <div data-tts="tldr" data-block="tldr" style={{
+          position: "relative",
           background: "var(--panel)", border: "1px solid var(--line-soft)",
           borderRadius: "var(--radius)", padding: "16px 24px",
           display: "flex", flexDirection: "column", gap: 8,
           transition: "background var(--dur) var(--ease)",
           ...hl("tldr"),
         }}>
+          <PickBox id="tldr" top={16} />
           <StatusLabel tone="dim">一句话</StatusLabel>
           <span style={{
             fontFamily: "var(--font-sans)", fontSize: "var(--text-lg)",
@@ -461,7 +543,8 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
 
         <SectionHead idx="01" title="核心观点" />
         {note.points.map((p, i) => (
-          <div key={i} data-tts={`point-${i}`} style={{
+          <div key={i} data-tts={`point-${i}`} data-block={`point-${i}`} style={{
+            position: "relative",
             display: "flex", flexDirection: "column", gap: 8,
             borderRadius: "var(--radius)",
             transition: "background var(--dur) var(--ease)",
@@ -470,6 +553,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
               ? { background: "var(--fill-active)", padding: "12px 16px", margin: "12px -16px 0" }
               : { padding: 0, margin: "24px 0 0" }),
           }}>
+            <PickBox id={`point-${i}`} />
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
               <Timestamp time={p.ts} active={isActive(p.t)} onSeek={mkSeek(p.t)} />
               <span style={{
@@ -487,12 +571,14 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
 
         <SectionHead idx="02" title="值得记住的话" />
         {note.quotes.map((q, i) => (
-          <div key={i} data-tts={`quote-${i}`} style={{
+          <div key={i} data-tts={`quote-${i}`} data-block={`quote-${i}`} style={{
+            position: "relative",
             marginTop: 16, background: "var(--panel)", borderRadius: "var(--radius)",
             padding: "16px 24px", display: "flex", flexDirection: "column", gap: 8,
             transition: "background var(--dur) var(--ease)",
             ...hl(`quote-${i}`),
           }}>
+            <PickBox id={`quote-${i}`} top={16} />
             <span style={{
               fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
               color: "var(--ink)", lineHeight: "var(--leading-note)",
@@ -510,10 +596,12 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
             <div style={{ padding: "12px 0", fontFamily: "var(--font-sans)", fontSize: "var(--text-base)", color: "var(--scale)" }}>无</div>
           )}
           {note.resources.map((r, i) => (
-            <div key={i} style={{
+            <div key={i} data-block={`res-${i}`} style={{
+              position: "relative",
               display: "flex", alignItems: "baseline", gap: 16,
               padding: "12px 0", borderBottom: "1px solid var(--line-faint)",
             }}>
+              <PickBox id={`res-${i}`} top={12} />
               <span style={{
                 fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
                 fontWeight: "var(--weight-medium)", color: "var(--ink)", flex: "none",
@@ -670,30 +758,65 @@ const Hint = ({ children, ink }) => (
   }}>{children}</div>
 );
 
-export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, tts, ttsSeg, onToggleTts, onCycleTtsRate, onRegenerateNote, onRegenerateTranscript, corrections, onResearchTerm, onApplyCorrection, onRetry, onGoSettings }) {
+export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, tts, ttsSeg, onToggleTts, onCycleTtsRate, onRegenerateNote, onRegenerateTranscript, corrections, onResearchTerm, onApplyCorrection, onResearchBlocks, onCancelResearch, onRetry, onGoSettings }) {
+  // ===== 块级核查会话(放这层:Reader 切 tab 会卸载,抽屉要活过 tab 切换) =====
+  const [session, setSession] = useState(null);
+  const researchReq = useRef(null); // 当前 reqId;过期事件丢弃
+  const cancelResearch = () => {
+    if (researchReq.current) {
+      onCancelResearch?.(researchReq.current);
+      researchReq.current = null;
+    }
+  };
+  /** 发起核查:先中止旧会话;错误也走 error 事件进时间线,invoke 的 reject 静默 */
+  const startResearch = (blocks) => {
+    cancelResearch();
+    const reqId = crypto.randomUUID();
+    researchReq.current = reqId;
+    setSession(startSession(reqId, blocks.length));
+    onResearchBlocks?.(reqId, blocks, (ev) => {
+      if (researchReq.current !== reqId) return;
+      setSession((s) => reduceEvent(s, ev));
+    })?.catch?.(() => {});
+  };
+  const closeResearch = () => { cancelResearch(); setSession(null); };
+  // 切剧集:中止并收抽屉(cleanup 在 id 变化与卸载时跑)
+  useEffect(() => () => { cancelResearch(); setSession(null); }, [ep?.id]);
+
   if (!ep) return null;
   return (
-    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-      <Console key={ep.id} ep={ep} onToggleRead={onToggleRead} tts={tts} onToggleTts={onToggleTts} onCycleTtsRate={onCycleTtsRate} />
-      {ep.status === "ready" && ep.note ? (
-        <>
-          <ReaderTabs
-            ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac}
-            transcript={transcript} onLoadTranscript={onLoadTranscript}
-            ttsSeg={ttsSeg}
-            onRegenerateNote={onRegenerateNote}
-            onRegenerateTranscript={onRegenerateTranscript}
-            corrections={corrections}
-            onResearchTerm={onResearchTerm}
-            onApplyCorrection={onApplyCorrection}
-          />
-          <Player
-            ep={ep} playFrac={playFrac} playing={playing} speed={speed} bars={bars} downloadPct={downloadPct}
-            onTogglePlay={onTogglePlay} onSeekFrac={onSeekFrac} onCycleSpeed={onCycleSpeed}
-          />
-        </>
-      ) : (
-        <StateWell ep={ep} onRetry={onRetry} onGoSettings={onGoSettings} />
+    <div style={{ flex: 1, minWidth: 0, display: "flex", gap: 16 }}>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+        <Console key={ep.id} ep={ep} onToggleRead={onToggleRead} tts={tts} onToggleTts={onToggleTts} onCycleTtsRate={onCycleTtsRate} />
+        {ep.status === "ready" && ep.note ? (
+          <>
+            <ReaderTabs
+              ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac}
+              transcript={transcript} onLoadTranscript={onLoadTranscript}
+              ttsSeg={ttsSeg}
+              onRegenerateNote={onRegenerateNote}
+              onRegenerateTranscript={onRegenerateTranscript}
+              corrections={corrections}
+              onResearchTerm={onResearchTerm}
+              onApplyCorrection={onApplyCorrection}
+              onStartResearch={startResearch}
+            />
+            <Player
+              ep={ep} playFrac={playFrac} playing={playing} speed={speed} bars={bars} downloadPct={downloadPct}
+              onTogglePlay={onTogglePlay} onSeekFrac={onSeekFrac} onCycleSpeed={onCycleSpeed}
+            />
+          </>
+        ) : (
+          <StateWell ep={ep} onRetry={onRetry} onGoSettings={onGoSettings} />
+        )}
+      </div>
+      {session && (
+        <ResearchDrawer
+          session={session}
+          onAbort={() => onCancelResearch?.(researchReq.current)}
+          onClose={closeResearch}
+          onApply={onApplyCorrection}
+        />
       )}
     </div>
   );

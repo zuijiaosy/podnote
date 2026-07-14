@@ -3,6 +3,8 @@
 // 与 backend.js 的 api 形状一一对应;事件走内存总线,音频用生成的静音 WAV。
 import ep125 from "../fixtures/ep125.json";
 import ep143 from "../fixtures/ep143.json";
+import researchEvents from "../fixtures/research-events.json";
+import { replayEvents } from "./research.js";
 
 // ===== 事件总线(模拟 tauri listen) =====
 const listeners = {};
@@ -45,17 +47,25 @@ let settings = {
   llmApi: "openai-responses",
   llmModel: "grok-4.5", notesDir: null, subAuto: true, ttsVoice: "Cherry", ttsRate: 1.5,
   asrKeySet: true, llmKeySet: true, tavilyKeySet: true,
+  asrKeyHint: "k3f8", llmKeyHint: "9zq2", tavilyKeyHint: "x7m4",
 };
 const notes = {
   m1: ep125,
   m2: ep143,
   m4: { ...ep125, meta: { ...ep125.meta, title: "EP124 为什么 Agent 时代,CLI 反而成了最优解" } },
+  m5: { ...ep143, meta: { ...ep143.meta, title: "Sam Altman on the Future of Compute" } },
+  m6: ep125, m7: ep125, m8: ep125,
 };
 let records = [
   { id: "m1", url: ep125.meta.url, show: ep125.meta.podcast, title: ep125.meta.title, date: "07-09", durationSec: ep125.meta.durationSec, status: "ready", readAt: null },
   { id: "m2", url: ep143.meta.url, show: ep143.meta.podcast, title: ep143.meta.title, date: "07-06", durationSec: ep143.meta.durationSec, status: "ready", readAt: null },
   { id: "m3", url: "https://mock/e/m3", show: "硅谷101", title: "芯片战争下半场:先进封装", date: "06-28", durationSec: 3922, status: "error", errStage: "RESOLVE", errMessage: "没解析出音频地址(模拟错误)", readAt: null },
   { id: "m4", url: "https://mock/e/m4", show: "硬地骇客", title: "EP124 为什么 Agent 时代,CLI 反而成了最优解", date: "06-20", durationSec: 4100, status: "ready", readAt: 1751500000 },
+  // m5:长英文频道名 — 自测频道条单行截断;m6-m8:凑满 7 个频道自测「+N」折叠(归档态,不占未读收件箱)
+  { id: "m5", url: "https://mock/e/m5", show: "No Priors: Artificial Intelligence | Technology | Startups", title: "Sam Altman on the Future of Compute", date: "07-11", durationSec: 2860, status: "ready", readAt: null },
+  { id: "m6", url: "https://mock/e/m6", show: "Lex Fridman Podcast", title: "Demis Hassabis: AlphaFold and AGI", date: "06-15", durationSec: 7200, status: "ready", readAt: 1751000000 },
+  { id: "m7", url: "https://mock/e/m7", show: "内核恐慌", title: "Vol.88 编译器的浪漫", date: "06-10", durationSec: 5400, status: "ready", readAt: 1750900000 },
+  { id: "m8", url: "https://mock/e/m8", show: "疯投圈", title: "第 92 期:咖啡的生意经", date: "06-05", durationSec: 4800, status: "ready", readAt: 1750800000 },
 ];
 let subs = [
   { pid: "mock-pid-1", title: "硬地骇客", lastPub: "2026-06-09T14:02:10.100Z" },
@@ -129,7 +139,30 @@ export const mockApi = {
   savePeaks: async (id, peaks) => { peaksStore[id] = peaks; },
   getSettings: async () => settings,
   setSettings: async (s) => { settings = { ...settings, ...s }; },
-  setKeys: async () => {},
+  setKeys: async (asrKey, llmKey, tavilyKey) => {
+    const apply = (k, set, hint) => {
+      if (k == null) return;
+      settings = { ...settings, [set]: !!k, [hint]: k.slice(-4) };
+    };
+    apply(asrKey, "asrKeySet", "asrKeyHint");
+    apply(llmKey, "llmKeySet", "llmKeyHint");
+    apply(tavilyKey, "tavilyKeySet", "tavilyKeyHint");
+  },
+  // 连接自检:模拟网络往返;缺配置时以字符串 reject(与 Tauri 命令的错误形状一致)
+  testAsrKey: async () => {
+    await sleep(700);
+    if (!settings.asrKeySet) throw "还没填百炼 API Key";
+  },
+  testLlm: async () => {
+    await sleep(1100);
+    if (!settings.llmKeySet) throw "缺少 LLM API Key";
+    if (!settings.llmBaseUrl) throw "还没填 LLM 网关地址";
+    if (!settings.llmModel) throw "还没填笔记模型";
+  },
+  testTavily: async () => {
+    await sleep(700);
+    if (!settings.tavilyKeySet) throw "还没填 Tavily API Key";
+  },
   getSubscriptions: async () => subs,
   addSubscription: async (url) => {
     if (!/xiaoyuzhoufm\.com\/(podcast|episode)\//.test(url)) throw "请粘贴小宇宙节目页或单集页链接";
@@ -184,6 +217,11 @@ export const mockApi = {
     return n;
   },
   getCorrections: async (id) => correctionsStore[id] ?? [],
+  /** 块级核查:回放录制好的事件序列(fixtures/research-events.json),不花钱自测抽屉全过程 */
+  researchBlocks: async (_id, _reqId, _blocks, onEvent) => {
+    await replayEvents(researchEvents, onEvent);
+  },
+  cancelResearch: async () => {},
   getTts: async (id) => ttsStore[id] ?? null,
   generateTts: async (id) => {
     const note = notes[id]?.note;

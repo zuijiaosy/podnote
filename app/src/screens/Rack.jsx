@@ -1,15 +1,18 @@
 // 磁带架(左栏) — 布局与「Podnote 正式设计 standalone.html」一致
 // 收件箱模型:架顶「未读|已归档」分段视图控件(视图+计数合一),
 // 频道条只管过滤,手动添加收成紧凑键(订阅时代它是低频动作),页脚只留设置
+import { useState } from "react";
 import { Button } from "../components/core.jsx";
 import { StatusLabel, EpisodeItem } from "../components/instrument.jsx";
 
-/** 频道筛选片:mono 小字,带未读数 */
-function Chip({ label, count, active, onClick }) {
+/** 频道筛选片:mono 小字,带未读数;长名单行省略号截断,悬停见全名 */
+function Chip({ label, count = 0, active, onClick }) {
   return (
     <button
       onClick={onClick}
+      title={label}
       style={{
+        display: "flex", alignItems: "center", gap: 4, maxWidth: "100%", minWidth: 0,
         fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
         letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
         padding: "3px 8px", cursor: "pointer",
@@ -20,11 +23,16 @@ function Chip({ label, count, active, onClick }) {
         transition: "border-color var(--dur) var(--ease), color var(--dur) var(--ease)",
       }}
     >
-      {label}
-      {count > 0 ? ` ${count}` : ""}
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {label}
+      </span>
+      {count > 0 && <span style={{ flex: "none" }}>{count}</span>}
     </button>
   );
 }
+
+/** 频道条默认最多露出的频道数,超出收进「+N」 */
+const CHIP_LIMIT = 6;
 
 /** 视图分段控件:未读 N | 已归档 M —— 当前视图与计数一眼可见 */
 function ViewSwitch({ showArchived, unread, archived, onToggle }) {
@@ -56,11 +64,12 @@ function ViewSwitch({ showArchived, unread, archived, onToggle }) {
 }
 
 export function Rack({
-  episodes, activeId, onSelect, onAdd, onSettings,
+  episodes, activeId, onSelect, onAdd, onSettings, onSubs,
   shows = null, filterShow = null, onFilterShow,
   archivedCount = 0, unreadCount = 0, showArchived = false, onToggleArchived,
 }) {
   const inboxMode = !!onToggleArchived; // 实况模式;设计评审模式(DemoApp)保持旧布局
+  const [chipsOpen, setChipsOpen] = useState(false);
   return (
     <div style={{
       width: "var(--sidebar-w)", flex: "none",
@@ -95,15 +104,28 @@ export function Rack({
           />
         </div>
       )}
-      {shows && shows.length > 0 && (
-        <div style={{ padding: "0 16px 8px", boxSizing: "border-box", display: "flex", flexWrap: "wrap", gap: 6 }}>
-          <Chip label="全部" count={0} active={!filterShow} onClick={() => onFilterShow?.(null)} />
-          {shows.map((s) => (
-            <Chip key={s.name} label={s.name} count={s.unread}
-              active={filterShow === s.name} onClick={() => onFilterShow?.(s.name)} />
-          ))}
-        </div>
-      )}
+      {shows && shows.length > 0 && (() => {
+        // 折叠态:最多露 CHIP_LIMIT 个;当前筛选的频道被折进去时换到可见区,激活态不许隐身
+        let visible = chipsOpen ? shows : shows.slice(0, CHIP_LIMIT);
+        if (!chipsOpen && filterShow && !visible.some((s) => s.name === filterShow)) {
+          const cur = shows.find((s) => s.name === filterShow);
+          if (cur) visible = [...visible.slice(0, CHIP_LIMIT - 1), cur];
+        }
+        const hidden = shows.length - visible.length;
+        return (
+          <div style={{ padding: "0 16px 8px", boxSizing: "border-box", display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <Chip label="全部" count={0} active={!filterShow} onClick={() => onFilterShow?.(null)} />
+            {visible.map((s) => (
+              <Chip key={s.name} label={s.name} count={s.unread}
+                active={filterShow === s.name} onClick={() => onFilterShow?.(s.name)} />
+            ))}
+            {hidden > 0 && <Chip label={`+${hidden}`} onClick={() => setChipsOpen(true)} />}
+            {chipsOpen && shows.length > CHIP_LIMIT && (
+              <Chip label="收起" onClick={() => setChipsOpen(false)} />
+            )}
+          </div>
+        );
+      })()}
       <div
         /* 视图/筛选切换时重挂载,触发列表逐条扫入 */
         key={`${showArchived}|${filterShow ?? ""}`}
@@ -138,8 +160,11 @@ export function Rack({
           />
         ))}
       </div>
-      <div style={{ borderTop: "1px solid var(--line-faint)", padding: 8, display: "flex", alignItems: "center" }}>
-        <Button variant="ghost" size="md" onClick={onSettings} style={{ width: "100%", textAlign: "left" }}>设置</Button>
+      <div style={{ borderTop: "1px solid var(--line-faint)", padding: 8, display: "flex", alignItems: "center", gap: 8 }}>
+        {onSubs && (
+          <Button variant="ghost" size="md" onClick={onSubs} style={{ flex: 1, textAlign: "left" }}>订阅</Button>
+        )}
+        <Button variant="ghost" size="md" onClick={onSettings} style={{ flex: 1, textAlign: "left" }}>设置</Button>
       </div>
     </div>
   );

@@ -12,7 +12,7 @@ pub use super::llm::LlmConfig;
 /// prompt 唯一真源:仓库根 prompts/note.md
 const PROMPT_TEMPLATE: &str = include_str!("../../../../prompts/note.md");
 const SYSTEM_PROMPT: &str =
-    "你是一个中文播客笔记助手。只输出一个合法的 JSON 对象,不要 Markdown 代码块,不要任何前言后语。";
+    "你是播客笔记助手,无论节目是什么语言,笔记一律用中文书写(专有名词保留原文)。只输出一个合法的 JSON 对象,不要 Markdown 代码块,不要任何前言后语。";
 const MAX_TRIES: usize = 2;
 
 pub fn build_prompt(meta: &EpisodeMeta, timed_text: &str, glossary: &str) -> String {

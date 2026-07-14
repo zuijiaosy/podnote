@@ -5,7 +5,7 @@
 //   pncli tts <note.json> [voice]   朗读合成:分段调 qwen3-tts-flash,产物写 ./tts-out/
 // 复用仓库根 data/<slug>.asr.json 缓存与 notes/ 输出约定
 use anyhow::{bail, Context, Result};
-use app_lib::pipeline::{asr, correct, note, resolve, summarize, tts, vocab};
+use app_lib::pipeline::{agent, asr, correct, note, resolve, summarize, tts, vocab};
 use std::fs;
 use std::path::Path;
 
@@ -148,6 +148,52 @@ async fn cmd_research(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// pncli research-blocks <note.json> <块:tldr,1,3> [节目名] — headless 跑块级核查 agent
+/// 事件按 JSONL 打到 stdout(录前端 fixture 用),统计信息走 stderr
+async fn cmd_research_blocks(args: &[String]) -> Result<()> {
+    const USAGE: &str = "用法: pncli research-blocks <note.json> <块序号,如 tldr,1,3> [节目名]";
+    let path = args.first().context(USAGE)?;
+    let picks = args.get(1).context(USAGE)?;
+    let doc: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    let note_obj = doc.get("note").unwrap_or(&doc);
+    let podcast = args.get(2).cloned().unwrap_or_else(|| {
+        doc.pointer("/meta/podcast").and_then(|v| v.as_str()).unwrap_or("").to_string()
+    });
+    // 块选择:tldr 或 points 的 1 起序号(与阅读井里的块一一对应)
+    let mut blocks = Vec::new();
+    for tok in picks.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        if tok == "tldr" {
+            let text = note_obj.get("tldr").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            blocks.push(agent::BlockInput { text, who: String::new(), ts: String::new() });
+        } else {
+            let i: usize = tok.parse().with_context(|| format!("块序号不合法: {tok}"))?;
+            let p = note_obj
+                .pointer(&format!("/points/{}", i.saturating_sub(1)))
+                .with_context(|| format!("没有第 {i} 个 point"))?;
+            let s = |k: &str| p.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            blocks.push(agent::BlockInput {
+                text: format!("{}。{}", s("h"), s("body")),
+                who: s("who"),
+                ts: s("ts"),
+            });
+        }
+    }
+    let tavily_key = std::env::var("TAVILY_API_KEY").context("需要 TAVILY_API_KEY")?;
+    let llm = llm_from_env();
+    if llm.api_key.is_empty() {
+        bail!("需要 PI_API_KEY(LLM)");
+    }
+    let client = reqwest::Client::new();
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let started = std::time::Instant::now();
+    let items = agent::research_blocks(&client, &llm, &tavily_key, &podcast, &blocks, &cancel, &|ev| {
+        println!("{}", serde_json::to_string(&ev).unwrap_or_default());
+    })
+    .await?;
+    eprintln!("✅ {} 条建议,耗时 {:.1}s", items.len(), started.elapsed().as_secs_f64());
+    Ok(())
+}
+
 /// pncli correct <note.json> <原词> <正词> — 离线测全文替换 + md 重渲,写 .corrected 副本不覆盖原文件
 fn cmd_correct(args: &[String]) -> Result<()> {
     let (path, original, corrected) = match args {
@@ -183,6 +229,7 @@ async fn main() -> Result<()> {
         Some("tts") => return cmd_tts(args.get(1), args.get(2)).await,
         Some("vocab") => return cmd_vocab(args.get(1)).await,
         Some("research") => return cmd_research(&args[1..]).await,
+        Some("research-blocks") => return cmd_research_blocks(&args[1..]).await,
         Some("correct") => return cmd_correct(&args[1..]),
         _ => {}
     }

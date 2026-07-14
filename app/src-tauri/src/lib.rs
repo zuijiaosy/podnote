@@ -22,6 +22,7 @@ pub fn run() {
                 client: reqwest::Client::new(),
                 keys: Mutex::new(keys),
                 checking_subs: AtomicBool::new(false),
+                research_cancel: Mutex::new(std::collections::HashMap::new()),
             });
             commands::start_sub_poller(app.handle().clone());
             Ok(())
@@ -47,9 +48,14 @@ pub fn run() {
             commands::get_settings,
             commands::set_settings,
             commands::set_keys,
+            commands::test_asr_key,
+            commands::test_llm,
+            commands::test_tavily,
             commands::research_term,
             commands::apply_correction,
             commands::get_corrections,
+            commands::research_blocks,
+            commands::cancel_research,
             commands::get_subscriptions,
             commands::add_subscription,
             commands::remove_subscription,

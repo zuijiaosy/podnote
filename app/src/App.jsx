@@ -5,6 +5,7 @@ import { NoteView } from "./screens/NoteView.jsx";
 import { Empty } from "./screens/Empty.jsx";
 import { AddFlow } from "./screens/AddFlow.jsx";
 import { Settings } from "./screens/Settings.jsx";
+import { Subscriptions } from "./screens/Subscriptions.jsx";
 import { DemoApp } from "./screens/DemoApp.jsx";
 import { inTauri, mockMode, api, toMediaUrl, uiStatus, uiStatusLabel, STAGE_ZH } from "./lib/backend.js";
 import { extractPeaks } from "./lib/audio.js";
@@ -478,16 +479,26 @@ function LiveApp() {
         settingsView && (
           <Settings
             view={settingsView}
-            subs={subs}
-            onAddSub={addSub}
-            onRemoveSub={removeSub}
-            onCheckSubs={checkSubs}
             onChangeField={saveSettings}
             onSaveKeys={saveKeys}
             onChooseDir={chooseDir}
+            onTestAsr={() => api.testAsrKey()}
+            onTestLlm={() => api.testLlm()}
+            onTestTavily={() => api.testTavily()}
+            subsCount={subs.length}
+            onGoSubs={() => setView("subs")}
             onBack={() => setView("notes")}
           />
         )
+      ) : view === "subs" ? (
+        <Subscriptions
+          subs={subs}
+          auto={!!settingsView?.subAuto}
+          onAdd={addSub}
+          onRemove={removeSub}
+          onCheck={checkSubs}
+          onBack={() => setView("notes")}
+        />
       ) : (
         <>
           <Rack
@@ -511,6 +522,7 @@ function LiveApp() {
               setDlPct(null);
             }}
             onAdd={() => { setAdding(true); setAddAct("input"); setAddErr(""); }}
+            onSubs={() => setView("subs")}
             onSettings={() => setView("settings")}
           />
           {episodes.length === 0 ? (
@@ -518,6 +530,7 @@ function LiveApp() {
               selfCheck={{
                 asrKey: !!settingsView?.asrKeySet,
                 llmKey: !!settingsView?.llmKeySet,
+                llmGateway: !!(settingsView?.llmBaseUrl && settingsView?.llmModel),
               }}
               onAdd={() => { setAdding(true); setAddAct("input"); setAddErr(""); }}
               onGoSettings={() => setView("settings")}
@@ -541,6 +554,8 @@ function LiveApp() {
               onToggleRead={toggleRead}
               corrections={correctionsMap[ep?.id] ?? []}
               onResearchTerm={(term, context) => api.researchTerm(ep.id, term, context)}
+              onResearchBlocks={(reqId, blocks, onEvent) => api.researchBlocks(ep.id, reqId, blocks, onEvent)}
+              onCancelResearch={(reqId) => api.cancelResearch(reqId)}
               onApplyCorrection={async (original, corrected, evidenceUrl, confidence) => {
                 if (!ep) return 0;
                 const n = await api.applyCorrection(ep.id, original, corrected, evidenceUrl, confidence);

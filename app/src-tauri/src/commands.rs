@@ -1,15 +1,16 @@
 // commands — Tauri 命令层 + 管线运行器 + 事件
 // 事件: "pipeline-progress" { id, stage, status, detail } — AddFlow 五灯与磁带架同源消费
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
 use crate::library::{ensure_dir, episode_id, short_date, EpisodeRecord, Library};
-use crate::pipeline::{asr, correct, glossary, note, resolve, summarize, tts, vocab};
+use crate::pipeline::{agent, asr, correct, glossary, llm, note, resolve, summarize, tavily, tts, vocab};
 use crate::subscriptions::{pick_new, SubStore, Subscription};
 
 /// 密钥内存缓存:启动时读一次,运行期零钥匙串访问
@@ -27,6 +28,8 @@ pub struct AppState {
     pub keys: Mutex<Keys>,
     /// 订阅检查进行中(定时轮询与手动检查互斥,防重复入库)
     pub checking_subs: AtomicBool,
+    /// 进行中的块级核查:reqId → 取消标志(关抽屉/切集时置位中止 agent)
+    pub research_cancel: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 
 // ===== 设置(非敏感项存 settings.json;key 存 macOS 钥匙串) =====
@@ -52,9 +55,10 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             asr_host: asr::DEFAULT_HOST.into(),
-            llm_base_url: "https://api.codexzh.com/v1".into(),
+            // 网关与模型无默认:key 会随请求发往网关,默认指向任何第三方都是替用户做安全决定
+            llm_base_url: String::new(),
             llm_api: "openai-responses".into(),
-            llm_model: "grok-4.5".into(),
+            llm_model: String::new(),
             notes_dir: None,
             sub_auto: true,
             tts_voice: tts::DEFAULT_VOICE.into(),
@@ -107,6 +111,15 @@ pub struct SettingsView {
     pub asr_key_set: bool,
     pub llm_key_set: bool,
     pub tavily_key_set: bool,
+    pub asr_key_hint: String,
+    pub llm_key_hint: String,
+    pub tavily_key_hint: String,
+}
+
+/// key 后四位:让"已保存"可辨认(存的是哪把),但不可还原
+fn key_hint(k: &str) -> String {
+    let n = k.chars().count();
+    k.chars().skip(n.saturating_sub(4)).collect()
 }
 
 #[tauri::command]
@@ -118,6 +131,9 @@ pub fn get_settings(state: State<AppState>) -> SettingsView {
         asr_key_set: !keys.asr.is_empty(),
         llm_key_set: !keys.llm.is_empty(),
         tavily_key_set: !keys.tavily.is_empty(),
+        asr_key_hint: key_hint(&keys.asr),
+        llm_key_hint: key_hint(&keys.llm),
+        tavily_key_hint: key_hint(&keys.tavily),
     }
 }
 
@@ -153,6 +169,69 @@ pub async fn set_keys(
     };
     let lib = state.lib.lock().unwrap();
     keys_save(&lib, &snapshot)
+}
+
+// ===== 连接自检:各发一个最小真实请求,验证"钥匙能开门"而不只是"钥匙存在" =====
+
+#[tauri::command]
+pub async fn test_asr_key(state: State<'_, AppState>) -> Result<(), String> {
+    let (client, host, key) = {
+        let lib = state.lib.lock().unwrap();
+        let keys = state.keys.lock().unwrap();
+        (state.client.clone(), load_settings(&lib).asr_host, keys.asr.clone())
+    };
+    if key.is_empty() {
+        return Err("还没填百炼 API Key".into());
+    }
+    // 列热词表:免费、幂等,能同时验证 key 与 API 地址
+    vocab::list_podnote_vocabularies(&client, &host, &key)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn test_llm(state: State<'_, AppState>) -> Result<(), String> {
+    let (client, cfg) = {
+        let lib = state.lib.lock().unwrap();
+        let keys = state.keys.lock().unwrap();
+        let settings = load_settings(&lib);
+        if settings.llm_base_url.is_empty() {
+            return Err("还没填 LLM 网关地址".into());
+        }
+        if settings.llm_model.is_empty() {
+            return Err("还没填笔记模型".into());
+        }
+        (
+            state.client.clone(),
+            llm::LlmConfig {
+                base_url: settings.llm_base_url,
+                api_key: keys.llm.clone(),
+                model: settings.llm_model,
+                protocol: llm::Protocol::from_id(&settings.llm_api),
+            },
+        )
+    };
+    // 最小对话:一次验证 key + 网关 + 协议 + 模型名的完整组合
+    llm::stream_chat(&client, &cfg, "这是连通性自检,只回答 OK。", &[llm::user_message("OK?")], &|_| {})
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn test_tavily(state: State<'_, AppState>) -> Result<(), String> {
+    let (client, key) = {
+        let keys = state.keys.lock().unwrap();
+        (state.client.clone(), keys.tavily.clone())
+    };
+    if key.is_empty() {
+        return Err("还没填 Tavily API Key".into());
+    }
+    tavily::search(&client, &key, "podnote")
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 // ===== 库 =====
@@ -686,6 +765,64 @@ pub fn get_corrections(state: State<AppState>, id: String) -> Vec<correct::Corre
     correct::load_corrections(&path)
 }
 
+// ===== 块级批量核查:agent(LLM tool-calling + Tavily)全过程经 Channel 流式推送 =====
+
+/// 终局修正表也在 final 事件里;应用仍由前端逐行调 apply_correction,这里不落盘
+#[tauri::command]
+pub async fn research_blocks(
+    state: State<'_, AppState>,
+    id: String,
+    req_id: String,
+    blocks: Vec<agent::BlockInput>,
+    channel: tauri::ipc::Channel<agent::AgentEvent>,
+) -> Result<(), String> {
+    let (client, keys, settings, show) = {
+        let lib = state.lib.lock().unwrap();
+        let keys = state.keys.lock().unwrap().clone();
+        let show = lib.get(&id).map(|r| r.show).unwrap_or_default();
+        (state.client.clone(), keys, load_settings(&lib), show)
+    };
+    if keys.tavily.is_empty() {
+        return Err("还没配置 Tavily API Key".into());
+    }
+    if keys.llm.is_empty() {
+        return Err("还没配置 LLM API Key".into());
+    }
+    let llm = summarize::LlmConfig {
+        base_url: settings.llm_base_url.clone(),
+        api_key: keys.llm,
+        model: settings.llm_model.clone(),
+        protocol: crate::pipeline::llm::Protocol::from_id(&settings.llm_api),
+    };
+    // 注册取消标志;结束(含出错)时移除,防 map 泄漏
+    let cancel = Arc::new(AtomicBool::new(false));
+    state.research_cancel.lock().unwrap().insert(req_id.clone(), cancel.clone());
+    let on_event = |ev: agent::AgentEvent| {
+        let _ = channel.send(ev);
+    };
+    let out =
+        agent::research_blocks(&client, &llm, &keys.tavily, &show, &blocks, &cancel, &on_event)
+            .await;
+    state.research_cancel.lock().unwrap().remove(&req_id);
+    match out {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // 错误也走事件(抽屉里可读);invoke 的 reject 同步返回给调用方
+            let msg = e.to_string();
+            let _ = channel.send(agent::AgentEvent::Error { message: msg.clone() });
+            Err(msg)
+        }
+    }
+}
+
+/// 中止核查:置取消标志(agent 在轮次间/工具间/SSE chunk 粒度检查,很快生效)
+#[tauri::command]
+pub fn cancel_research(state: State<AppState>, req_id: String) {
+    if let Some(flag) = state.research_cancel.lock().unwrap().get(&req_id) {
+        flag.store(true, Ordering::Relaxed);
+    }
+}
+
 // ===== 管线运行器 =====
 
 #[derive(Clone, Serialize)]
@@ -790,6 +927,10 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
     let (asr_key, llm_key) = (keys.asr, keys.llm);
     if llm_key.is_empty() {
         fail(&app, &id, "KEY", "还没配置 LLM API Key");
+        return;
+    }
+    if settings.llm_base_url.is_empty() || settings.llm_model.is_empty() {
+        fail(&app, &id, "KEY", "还没配置 LLM 网关地址或模型,请到设置页填写");
         return;
     }
     if asr_key.is_empty() && !asr_path.exists() {
