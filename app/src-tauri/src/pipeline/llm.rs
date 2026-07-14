@@ -399,14 +399,84 @@ pub fn extract_deltas(protocol: Protocol, event: &Value) -> Vec<Delta> {
     }
 }
 
-/// SSE 主循环:POST → 逐行取 data: {...} → 逐个增量回调;cancel 置位即中止(协议无关)
+/// 一次请求的用量(SSE 终局事件解析)。字段 None = 供应商没返回,展示层显示"—",不许推算成零。
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Usage {
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    /// 缓存命中读取(OpenAI cached_tokens / Anthropic cache_read_input_tokens)
+    pub cache_read_tokens: Option<u64>,
+    /// 缓存写入(仅 Anthropic cache_creation_input_tokens)
+    pub cache_write_tokens: Option<u64>,
+}
+
+impl Usage {
+    /// 后到的非空字段覆盖(Anthropic 的 message_delta 输出是累计值,覆盖语义正确)
+    fn merge(&mut self, other: Usage) {
+        if other.input_tokens.is_some() { self.input_tokens = other.input_tokens; }
+        if other.output_tokens.is_some() { self.output_tokens = other.output_tokens; }
+        if other.cache_read_tokens.is_some() { self.cache_read_tokens = other.cache_read_tokens; }
+        if other.cache_write_tokens.is_some() { self.cache_write_tokens = other.cache_write_tokens; }
+    }
+}
+
+/// 按协议从 SSE 事件里取用量(纯函数,单测友好)。
+/// Responses 在 response.completed;Completions 在带 usage 的终局 chunk(需请求带
+/// stream_options.include_usage);Anthropic 分散在 message_start(输入/缓存)与 message_delta(输出累计)。
+pub fn extract_usage(protocol: Protocol, event: &Value) -> Option<Usage> {
+    let ty = event.get("type").and_then(|v| v.as_str());
+    let n = |v: Option<&Value>| v.and_then(|x| x.as_u64());
+    match protocol {
+        Protocol::OpenAiResponses => {
+            if ty != Some("response.completed") {
+                return None;
+            }
+            let u = event.pointer("/response/usage")?;
+            Some(Usage {
+                input_tokens: n(u.get("input_tokens")),
+                output_tokens: n(u.get("output_tokens")),
+                cache_read_tokens: n(u.pointer("/input_tokens_details/cached_tokens")),
+                cache_write_tokens: None,
+            })
+        }
+        Protocol::OpenAiCompletions => {
+            let u = event.get("usage").filter(|u| !u.is_null())?;
+            Some(Usage {
+                input_tokens: n(u.get("prompt_tokens")),
+                output_tokens: n(u.get("completion_tokens")),
+                cache_read_tokens: n(u.pointer("/prompt_tokens_details/cached_tokens")),
+                cache_write_tokens: None,
+            })
+        }
+        Protocol::AnthropicMessages => match ty {
+            Some("message_start") => {
+                let u = event.pointer("/message/usage")?;
+                Some(Usage {
+                    input_tokens: n(u.get("input_tokens")),
+                    output_tokens: None,
+                    cache_read_tokens: n(u.get("cache_read_input_tokens")),
+                    cache_write_tokens: n(u.get("cache_creation_input_tokens")),
+                })
+            }
+            Some("message_delta") => {
+                let out = n(event.pointer("/usage/output_tokens"))?;
+                Some(Usage { output_tokens: Some(out), ..Default::default() })
+            }
+            _ => None,
+        },
+    }
+}
+
+/// SSE 主循环:POST → 逐行取 data: {...} → 逐个增量回调;cancel 置位即中止(协议无关)。
+/// 返回流中解析到的用量(供应商没发就是 None,调用方不许推算)
 async fn run_stream(
     client: &reqwest::Client,
     cfg: &LlmConfig,
     body: &Value,
     cancel: Option<&AtomicBool>,
     on_delta: &mut (dyn FnMut(Delta) + Send),
-) -> Result<()> {
+) -> Result<Option<Usage>> {
     if cfg.api_key.is_empty() {
         bail!("缺少 LLM API Key");
     }
@@ -426,6 +496,7 @@ async fn run_stream(
     }
 
     let mut buf = String::new();
+    let mut usage: Option<Usage> = None;
     let mut stream = res.bytes_stream();
     while let Some(chunk) = stream.next().await {
         if cancel.map(|c| c.load(Ordering::Relaxed)).unwrap_or(false) {
@@ -442,12 +513,15 @@ async fn run_stream(
                 continue;
             }
             let Ok(event) = serde_json::from_str::<Value>(data) else { continue };
+            if let Some(u) = extract_usage(cfg.protocol, &event) {
+                usage.get_or_insert_with(Usage::default).merge(u);
+            }
             for d in extract_deltas(cfg.protocol, &event) {
                 on_delta(d);
             }
         }
     }
-    Ok(())
+    Ok(usage)
 }
 
 /// 流式聊天:返回完整文本,增量经 on_delta 回调(进度显示用)
@@ -458,10 +532,29 @@ pub async fn stream_chat(
     messages: &[ChatMessage],
     on_delta: &(dyn Fn(&str) + Send + Sync),
 ) -> Result<String> {
-    let body = request_body(cfg.protocol, &cfg.model, system, messages);
+    stream_chat_full(client, cfg, system, messages, None, None, on_delta)
+        .await
+        .map(|(text, _)| text)
+}
+
+/// 全功能版流式聊天:可取消 + 返回用量 + 可选请求体改写(注入 store/cache_control 等按需字段)。
+/// 存量调用方走上面的 stream_chat 包装,行为不变;QA 等新入口用这个。
+pub async fn stream_chat_full(
+    client: &reqwest::Client,
+    cfg: &LlmConfig,
+    system: &str,
+    messages: &[ChatMessage],
+    cancel: Option<&AtomicBool>,
+    patch_body: Option<&(dyn Fn(&mut Value) + Send + Sync)>,
+    on_delta: &(dyn Fn(&str) + Send + Sync),
+) -> Result<(String, Option<Usage>)> {
+    let mut body = request_body(cfg.protocol, &cfg.model, system, messages);
+    if let Some(patch) = patch_body {
+        patch(&mut body);
+    }
     let mut out = String::new();
     let mut err_msg: Option<String> = None;
-    run_stream(client, cfg, &body, None, &mut |d| match d {
+    let usage = run_stream(client, cfg, &body, cancel, &mut |d| match d {
         Delta::Text(t) => {
             out.push_str(&t);
             on_delta(&t);
@@ -476,7 +569,7 @@ pub async fn stream_chat(
     if out.trim().is_empty() {
         bail!("LLM 没有返回任何内容——检查网关地址、模型名、协议和 key 是否正确");
     }
-    Ok(out)
+    Ok((out, usage))
 }
 
 /// agent 单轮产出:叙述文本 + 本轮请求的工具调用(为空即终局轮)
@@ -601,6 +694,52 @@ mod tests {
         assert_eq!(b["system"], "sys");
         assert_eq!(b["max_tokens"], 8192);
         assert_eq!(b["messages"][0]["role"], "user");
+    }
+
+    #[test]
+    fn extracts_usage_responses_completed() {
+        let ev = json!({
+            "type": "response.completed",
+            "response": { "usage": {
+                "input_tokens": 42180, "output_tokens": 816,
+                "input_tokens_details": { "cached_tokens": 37940 }
+            }}
+        });
+        let u = extract_usage(Protocol::OpenAiResponses, &ev).unwrap();
+        assert_eq!(u.input_tokens, Some(42180));
+        assert_eq!(u.output_tokens, Some(816));
+        assert_eq!(u.cache_read_tokens, Some(37940));
+        assert_eq!(u.cache_write_tokens, None);
+        // 非终局事件不出用量
+        assert!(extract_usage(Protocol::OpenAiResponses, &json!({"type": "response.output_text.delta"})).is_none());
+    }
+
+    #[test]
+    fn extracts_usage_completions_final_chunk() {
+        // 中途 chunk 的 usage 为 null(include_usage 模式),不许当成零
+        assert!(extract_usage(Protocol::OpenAiCompletions, &json!({"choices": [], "usage": null})).is_none());
+        let ev = json!({ "choices": [], "usage": {
+            "prompt_tokens": 100, "completion_tokens": 20,
+            "prompt_tokens_details": { "cached_tokens": 80 }
+        }});
+        let u = extract_usage(Protocol::OpenAiCompletions, &ev).unwrap();
+        assert_eq!(u.input_tokens, Some(100));
+        assert_eq!(u.output_tokens, Some(20));
+        assert_eq!(u.cache_read_tokens, Some(80));
+    }
+
+    #[test]
+    fn extracts_usage_anthropic_start_plus_delta_merge() {
+        let start = json!({ "type": "message_start", "message": { "usage": {
+            "input_tokens": 12, "cache_read_input_tokens": 30000, "cache_creation_input_tokens": 500
+        }}});
+        let delta = json!({ "type": "message_delta", "usage": { "output_tokens": 640 }});
+        let mut u = extract_usage(Protocol::AnthropicMessages, &start).unwrap();
+        u.merge(extract_usage(Protocol::AnthropicMessages, &delta).unwrap());
+        assert_eq!(u.input_tokens, Some(12));
+        assert_eq!(u.output_tokens, Some(640));
+        assert_eq!(u.cache_read_tokens, Some(30000));
+        assert_eq!(u.cache_write_tokens, Some(500));
     }
 
     #[test]

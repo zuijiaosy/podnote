@@ -46,6 +46,7 @@ let settings = {
   asrHost: "https://mock.example", llmBaseUrl: "https://mock.example/v1",
   llmApi: "openai-responses",
   llmModel: "grok-4.5", notesDir: null, subAuto: true, ttsVoice: "Cherry", ttsRate: 1.5,
+  exportWikilinks: false,
   asrKeySet: true, llmKeySet: true, tavilyKeySet: true,
   asrKeyHint: "k3f8", llmKeyHint: "9zq2", tavilyKeyHint: "x7m4",
 };
@@ -71,6 +72,19 @@ let subs = [
   { pid: "mock-pid-1", title: "硬地骇客", lastPub: "2026-06-09T14:02:10.100Z" },
   { pid: "mock-pid-2", title: "张小珺Jùn｜商业访谈录", lastPub: "2026-07-06T10:00:00.000Z" },
 ];
+// 问答:当前内容版本 + 预置一轮旧版记录(transcriptHash 不同 → 自测"内容已更新"分隔线)
+const QA_REV = { transcriptHash: "mock-t2", noteHash: "mock-n2", promptVersion: "qa-1", model: "grok-4.5", protocol: "openai-responses" };
+const qaStore = {
+  m1: [{
+    q: "主播对独立开发的钱怎么看?",
+    a: "先把生存线的钱存够,再用最短周期发布验证失败 [04:19],不要靠熬。",
+    refs: [{ ts: "04:19", sec: 259 }],
+    usage: { inputTokens: 41210, outputTokens: 402, cacheReadTokens: null, cacheWriteTokens: null },
+    revision: { ...QA_REV, transcriptHash: "mock-t1", noteHash: "mock-n1" },
+    createdAt: 1752300000,
+  }],
+};
+const qaAbort = {};
 const ttsStore = {}; // id -> {complete, segments:[{seq,key,path}]}
 const correctionsStore = {}; // id -> [{original, corrected, evidenceUrl, confidence, ts}]
 const peaksStore = {}; // id -> number[](波形峰值缓存,对应真后端的 peaks/<id>.json)
@@ -186,6 +200,42 @@ export const mockApi = {
     simulatePipeline(id);
     return 1;
   },
+  // ===== 单集问答:canned 流式回答;预置一轮旧 revision 记录,自测"内容已更新"分隔线 =====
+  askEpisode: async (id, question, history, onEvent) => {
+    const text = `节目里对这个问题有直接讨论:\n- **先存钱再验证**:主播认为先把生存的钱存够,再用最短周期发布验证失败 [04:19]\n- **判断力比执行稀缺**:AI 时代写代码不再稀缺,稀缺的是判断方案与边界的能力 [24:00]\n(mock 回答,带入历史 ${history.length} 轮)`;
+    qaAbort[id] = false;
+    for (let i = 0; i < text.length; i += 3) {
+      if (qaAbort[id]) throw "已取消";
+      onEvent({ type: "delta", text: text.slice(i, i + 3) });
+      await sleep(16);
+    }
+    const round = {
+      q: question, a: text,
+      refs: [{ ts: "04:19", sec: 259 }, { ts: "24:00", sec: 1443 }],
+      usage: { inputTokens: 42180, outputTokens: 816, cacheReadTokens: 37940, cacheWriteTokens: null },
+      revision: { ...QA_REV },
+      createdAt: Math.floor(Date.now() / 1000),
+    };
+    (qaStore[id] ??= []).push(round);
+    onEvent({ type: "done", round });
+  },
+  cancelAsk: async (id) => { qaAbort[id] = true; },
+  exportEpisode: async (id) => {
+    if (!settings.notesDir) throw "先在设置里选择「笔记导出目录」";
+    const r = records.find((x) => x.id === id);
+    return `已导出: ${r?.title?.slice(0, 12) ?? id}.md`;
+  },
+  exportShow: async (show) => {
+    if (!settings.notesDir) throw "先在设置里选择「笔记导出目录」";
+    const n = records.filter((r) => r.show === show && r.status === "ready").length;
+    return `已导出 ${n} 集`;
+  },
+  getQa: async (id) => ({
+    // 拷贝返回:真后端过 IPC 必然是副本,mock 不许把内存数组按引用泄出去
+    rounds: [...(qaStore[id] ?? [])],
+    current: { ...QA_REV },
+    estInputTokens: 21400,
+  }),
   /** 划词纠正查证:canned verdict — 含 "面筋"/"Player" 返回已证实,其余返回推测 */
   researchTerm: async (_id, term) => {
     await sleep(1200);

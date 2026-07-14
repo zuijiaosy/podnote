@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod export;
 pub mod library;
 pub mod pipeline;
 pub mod subscriptions;
@@ -23,6 +24,7 @@ pub fn run() {
                 keys: Mutex::new(keys),
                 checking_subs: AtomicBool::new(false),
                 research_cancel: Mutex::new(std::collections::HashMap::new()),
+                asking: Mutex::new(std::collections::HashMap::new()),
             });
             commands::start_sub_poller(app.handle().clone());
             Ok(())
@@ -51,6 +53,11 @@ pub fn run() {
             commands::test_asr_key,
             commands::test_llm,
             commands::test_tavily,
+            commands::export_episode,
+            commands::export_show,
+            commands::ask_episode,
+            commands::cancel_ask,
+            commands::get_qa,
             commands::research_term,
             commands::apply_correction,
             commands::get_corrections,

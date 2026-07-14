@@ -62,6 +62,19 @@ const realApi = {
   },
   /** 中止块级核查(关抽屉/切集时调) */
   cancelResearch: (reqId) => invoke("cancel_research", { reqId }),
+  /** 单集问答:流式事件经 Channel 回调 onEvent;resolve = 整轮完成(reject = 出错/取消) */
+  askEpisode: (id, question, history, onEvent) => {
+    const channel = new Channel();
+    channel.onmessage = onEvent;
+    return invoke("ask_episode", { id, question, history, channel });
+  },
+  /** 中止进行中的提问 */
+  cancelAsk: (id) => invoke("cancel_ask", { id }),
+  /** 问答记录 {rounds, current, estInputTokens} */
+  getQa: (id) => invoke("get_qa", { id }),
+  /** 显式导出(磁带架右键):结果经系统通知回执 */
+  exportEpisode: (id) => invoke("export_episode", { id }),
+  exportShow: (show) => invoke("export_show", { show }),
   getSettings: () => invoke("get_settings"),
   setSettings: (settings) => invoke("set_settings", { settings }),
   setKeys: (asrKey, llmKey, tavilyKey) =>

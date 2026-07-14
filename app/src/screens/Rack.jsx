@@ -1,15 +1,16 @@
 // 磁带架(左栏) — 布局与「Podnote 正式设计 standalone.html」一致
 // 收件箱模型:架顶「未读|已归档」分段视图控件(视图+计数合一),
 // 频道条只管过滤,手动添加收成紧凑键(订阅时代它是低频动作),页脚只留设置
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/core.jsx";
 import { StatusLabel, EpisodeItem } from "../components/instrument.jsx";
 
 /** 频道筛选片:mono 小字,带未读数;长名单行省略号截断,悬停见全名 */
-function Chip({ label, count = 0, active, onClick }) {
+function Chip({ label, count = 0, active, onClick, onContextMenu }) {
   return (
     <button
       onClick={onClick}
+      onContextMenu={onContextMenu}
       title={label}
       style={{
         display: "flex", alignItems: "center", gap: 4, maxWidth: "100%", minWidth: 0,
@@ -33,6 +34,71 @@ function Chip({ label, count = 0, active, onClick }) {
 
 /** 频道条默认最多露出的频道数,超出收进「+N」 */
 const CHIP_LIMIT = 6;
+
+/** 磁带架右键菜单:材质与 NoteView 的 ContextMenu 同源;点击项后原位显示结果回执再自动收起 */
+function RackMenu({ menu, onClose }) {
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const timer = useRef(null);
+  const gen = useRef(0);
+  // 换代:清回执与定时器,并令进行中的旧动作作废(await 回来对不上代号就丢弃)
+  useEffect(() => {
+    gen.current += 1;
+    setMsg("");
+    setBusy(false);
+    return () => clearTimeout(timer.current);
+  }, [menu]);
+  const run = async (it) => {
+    if (busy) return;
+    const g = gen.current;
+    setBusy(true);
+    let receipt;
+    try {
+      const r = await it.onClick();
+      receipt = (typeof r === "string" && r) || it.doneLabel || "完成";
+    } catch (e) {
+      receipt = String(e);
+    }
+    if (gen.current !== g) return; // 菜单已换,这个回执不属于当前菜单
+    setMsg(receipt);
+    timer.current = setTimeout(onClose, 2200);
+  };
+  return (
+    <div
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{
+        position: "absolute", top: menu.top, left: menu.left, zIndex: 3, minWidth: 150, maxWidth: 220,
+        background: "var(--panel)", border: "1px solid var(--line-soft)",
+        borderRadius: "var(--radius)", padding: 4, boxSizing: "border-box",
+        display: "flex", flexDirection: "column",
+        animation: "pn-pop var(--dur) var(--ease) both",
+      }}
+    >
+      {msg ? (
+        <div style={{
+          fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--ink)",
+          padding: "8px 12px", lineHeight: 1.5,
+        }}>{msg}</div>
+      ) : (
+        menu.items.map((it, i) => (
+          <button
+            key={i}
+            onClick={busy ? undefined : () => run(it)}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--fill-hover)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            style={{
+              fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--ink)",
+              background: "transparent", border: "none", borderRadius: "var(--radius-sm)",
+              padding: "8px 12px", textAlign: "left", cursor: "pointer",
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}
+          >{it.label}</button>
+        ))
+      )}
+    </div>
+  );
+}
 
 /** 视图分段控件:未读 N | 已归档 M —— 当前视图与计数一眼可见 */
 function ViewSwitch({ showArchived, unread, archived, onToggle }) {
@@ -67,15 +133,36 @@ export function Rack({
   episodes, activeId, onSelect, onAdd, onSettings, onSubs,
   shows = null, filterShow = null, onFilterShow,
   archivedCount = 0, unreadCount = 0, showArchived = false, onToggleArchived,
+  onExportEpisode, onExportShow,
 }) {
   const inboxMode = !!onToggleArchived; // 实况模式;设计评审模式(DemoApp)保持旧布局
   const [chipsOpen, setChipsOpen] = useState(false);
+  // 右键菜单:{top, left, items};坐标相对 Rack 容器
+  const [menu, setMenu] = useState(null);
+  const rootRef = useRef(null);
+  /** 在鼠标处弹菜单;右缘防溢出 */
+  const popMenu = (e, items) => {
+    e.preventDefault();
+    if (!items.length) return;
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMenu({
+      // 双向防溢出:root 是 overflow hidden,贴底/贴右的菜单会被裁掉
+      top: Math.min(e.clientY - rect.top, rect.height - 96),
+      left: Math.min(e.clientX - rect.left, rect.width - 160),
+      items,
+    });
+  };
   return (
-    <div style={{
-      width: "var(--sidebar-w)", flex: "none",
-      background: "var(--well)", borderRadius: "var(--radius)",
-      display: "flex", flexDirection: "column", overflow: "hidden",
-    }}>
+    <div
+      ref={rootRef}
+      onMouseDown={() => { if (menu) setMenu(null); }}
+      style={{
+        width: "var(--sidebar-w)", flex: "none", position: "relative",
+        background: "var(--well)", borderRadius: "var(--radius)",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+      }}>
+      {menu && <RackMenu menu={menu} onClose={() => setMenu(null)} />}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 16px 8px", boxSizing: "border-box" }}>
         <StatusLabel>PODNOTE</StatusLabel>
         <span style={{ flex: 1 }} />
@@ -117,7 +204,13 @@ export function Rack({
             <Chip label="全部" count={0} active={!filterShow} onClick={() => onFilterShow?.(null)} />
             {visible.map((s) => (
               <Chip key={s.name} label={s.name} count={s.unread}
-                active={filterShow === s.name} onClick={() => onFilterShow?.(s.name)} />
+                active={filterShow === s.name} onClick={() => onFilterShow?.(s.name)}
+                onContextMenu={onExportShow ? (e) => popMenu(e, [{
+                  label: `导出「${s.name}」全部笔记`,
+                  doneLabel: "已导出,详见通知",
+                  onClick: () => onExportShow(s.name),
+                }]) : undefined}
+              />
             ))}
             {hidden > 0 && <Chip label={`+${hidden}`} onClick={() => setChipsOpen(true)} />}
             {chipsOpen && shows.length > CHIP_LIMIT && (
@@ -149,6 +242,11 @@ export function Rack({
             errReason={ep.errReason}
             active={ep.id === activeId}
             onClick={() => onSelect(ep.id)}
+            onContextMenu={onExportEpisode && ep.status === "ready" ? (e) => popMenu(e, [{
+              label: "导出笔记到库",
+              doneLabel: "已导出",
+              onClick: () => onExportEpisode(ep.id),
+            }]) : undefined}
             style={{
               width: "100%", flex: "none",
               /* 归档变暗走 filter:与入场动画的 opacity 通道解耦(fill 会把 opacity 钉在 1) */

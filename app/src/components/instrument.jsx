@@ -91,7 +91,7 @@ export function Timestamp({ time, active = false, onSeek, style }) {
 /** 剧集列表项 = 磁带盒。节目名无衬线(中文禁入等宽),日期等宽,状态灯 + 时长/耗时。 */
 export function EpisodeItem({
   date, show, title, duration, status = "ready", statusLabel,
-  active = false, errReason, onClick, style,
+  active = false, errReason, onClick, onContextMenu, style,
 }) {
   const [hover, setHover] = useState(false);
   const defaultLabel = { off: "排队中", processing: "运行中", ready: "就绪", error: "出错" }[status];
@@ -99,6 +99,7 @@ export function EpisodeItem({
     <div
       role="button" tabIndex={0}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}

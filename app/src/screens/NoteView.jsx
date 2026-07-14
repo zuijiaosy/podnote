@@ -6,6 +6,7 @@ import { Button, Checkbox } from "../components/core.jsx";
 import { StatusLabel, IndicatorLight, Timestamp, Waveform } from "../components/instrument.jsx";
 import { Transcript } from "./Transcript.jsx";
 import { ResearchDrawer } from "./ResearchDrawer.jsx";
+import { QaDrawer } from "./QaDrawer.jsx";
 import { fmt } from "../lib/format.js";
 import { openExternal } from "../lib/backend.js";
 import { startSession, reduceEvent } from "../lib/research.js";
@@ -47,8 +48,8 @@ function Marked({ text, corrections }) {
   );
 }
 
-/** 右键菜单:划词模式(核实选中词/继续多选) | 块模式(核查选中分块/取消多选) */
-function ContextMenu({ menu, onVerify, onVerifyBlocks, onClearPicks, onClose }) {
+/** 右键菜单:划词模式(核实选中词/追问/继续多选) | 块模式(核查选中分块/取消多选) */
+function ContextMenu({ menu, onVerify, onAsk, onVerifyBlocks, onClearPicks, onClose }) {
   const item = (label, { disabled, onClick } = {}) => (
     <button
       onClick={disabled ? undefined : onClick}
@@ -88,6 +89,10 @@ function ContextMenu({ menu, onVerify, onVerifyBlocks, onClearPicks, onClose }) 
               ? `核实「${menu.term.length > 16 ? `${menu.term.slice(0, 16)}…` : menu.term}」`
               : menu.tooLong ? "选中内容太长" : "先选中要核实的词",
             { disabled: !menu.term, onClick: onVerify }
+          )}
+          {onAsk && menu.term && item(
+            `追问「${menu.term.length > 16 ? `${menu.term.slice(0, 16)}…` : menu.term}」`,
+            { onClick: onAsk }
           )}
           {item("继续多选", { onClick: onClose })}
         </>
@@ -203,7 +208,7 @@ function SectionHead({ idx, title }) {
   );
 }
 
-function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate }) {
+function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate, onToggleQa }) {
   const ttsLabel = tts?.gen?.error ? "朗读失败 · 重试"
     : tts?.waiting ? (tts?.gen ? `合成中 ${tts.gen.done + 1}/${tts.gen.total}` : "等待合成…")
     : tts?.playing ? "停止朗读" : "朗读";
@@ -233,6 +238,9 @@ function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate }) {
         <span style={{ flex: 1 }} />
         {ep.status === "ready" && (
           <>
+            {onToggleQa && (
+              <Button variant="ghost" size="sm" onClick={() => onToggleQa()}>问答</Button>
+            )}
             {(tts?.playing || tts?.waiting) && (
               <Button variant="ghost" size="sm" onClick={() => onCycleTtsRate?.()}>
                 {`${tts?.rate ?? 1.5}×`}
@@ -253,10 +261,75 @@ function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate }) {
   );
 }
 
+/** 结构目录:从 points 直接派生的零成本导航(宽窗贴在阅读井右缘)。
+    行点击滚到对应笔记块;时间码点击回跳播放器;播放位置所在章节亮信号橙。 */
+function Toc({ points, playSec, onSeekSec }) {
+  const active = playSec > 0 ? points.reduce((acc, p, i) => ((p.t ?? 0) <= playSec ? i : acc), -1) : -1;
+  // 手动算 scrollTop 滚阅读井:锚点 offsetParent 就是滚动容器(position relative)
+  const jump = (i) => {
+    const el = document.querySelector(`[data-tts="point-${i}"]`);
+    const sc = el?.closest("[data-reader-scroll]");
+    if (el && sc) sc.scrollTo({ top: Math.max(0, el.offsetTop - 16), behavior: "smooth" });
+  };
+  return (
+    <div style={{
+      // zIndex 必须高于后渲染的阅读井,否则整条目录栏被盖住收不到点击
+      position: "absolute", top: 56, right: 8, bottom: 16, width: 184, zIndex: 2,
+      overflow: "auto", display: "flex", flexDirection: "column", gap: 2,
+      padding: "8px 8px 8px 0", boxSizing: "border-box",
+      animation: "pn-enter var(--dur-slow) var(--ease) both",
+    }}>
+      <StatusLabel tone="dim" style={{ padding: "0 0 6px 10px" }}>结构</StatusLabel>
+      {points.map((p, i) => (
+        <div
+          key={i}
+          role="button"
+          title={p.h}
+          onClick={() => jump(i)}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--fill-hover)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          style={{
+            display: "flex", flexDirection: "column", gap: 2, cursor: "pointer",
+            padding: "5px 8px 5px 10px", borderRadius: "var(--radius-sm)",
+            borderLeft: i === active ? "2px solid var(--signal)" : "2px solid var(--line-faint)",
+            transition: "border-color var(--dur) var(--ease)",
+          }}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); onSeekSec(p.t ?? 0); }}
+            title="回跳到这里播放"
+            style={{
+              alignSelf: "flex-start", background: "none", border: "none", padding: 0, cursor: "pointer",
+              fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+              letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
+              color: i === active ? "var(--signal)" : "var(--scale)",
+            }}
+          >{p.ts}</button>
+          <span style={{
+            fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)",
+            color: i === active ? "var(--ink)" : "var(--scale)", lineHeight: "var(--leading-tight)",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>{p.h}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** 阅读井容器:NOTES(笔记,默认) / TRANSCRIPT(逐句字幕) 双 tab */
-function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, ttsSeg, onRegenerateNote, onRegenerateTranscript, corrections, onResearchTerm, onApplyCorrection, onStartResearch }) {
+function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, ttsSeg, onRegenerateNote, onRegenerateTranscript, corrections, onResearchTerm, onApplyCorrection, onStartResearch, onAskQuestion }) {
   const [tab, setTab] = useState("notes");
   useEffect(() => setTab("notes"), [ep.id]);
+  // 阅读井宽度:目录栏只在容得下(中央 648 栏 + 右缘 192)时出现,窄窗不挤压正文
+  const wellRef = useRef(null);
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const el = wellRef.current;
+    if (!el) return;
+    const ob = new ResizeObserver(() => setWide(el.clientWidth >= 1040));
+    ob.observe(el);
+    return () => ob.disconnect();
+  }, []);
   useEffect(() => {
     if (tab === "transcript" && !transcript) onLoadTranscript?.();
   }, [tab, transcript, onLoadTranscript]);
@@ -296,11 +369,19 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
     >{label}</button>
   );
 
+  const points = ep.note?.points ?? [];
   return (
-    <div style={{
+    <div ref={wellRef} style={{
       flex: 1, minHeight: 0, background: "var(--well)", borderRadius: "var(--radius)",
-      display: "flex", flexDirection: "column",
+      display: "flex", flexDirection: "column", position: "relative",
     }}>
+      {tab === "notes" && wide && points.length >= 3 && (
+        <Toc
+          points={points}
+          playSec={playFrac * ep.durationSec}
+          onSeekSec={(sec) => onSeekFrac(sec / ep.durationSec)}
+        />
+      )}
       <div style={{
         flex: "none", display: "flex", gap: 8, padding: "12px 24px 0",
         borderBottom: "1px solid var(--line-faint)",
@@ -321,7 +402,7 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
         <Reader
           key={ep.id} ep={ep} playFrac={playFrac} onSeekFrac={onSeekFrac} ttsSeg={ttsSeg}
           corrections={corrections} onResearchTerm={onResearchTerm} onApplyCorrection={onApplyCorrection}
-          onStartResearch={onStartResearch}
+          onStartResearch={onStartResearch} onAskQuestion={onAskQuestion}
         />
       ) : (
         <Transcript
@@ -336,7 +417,7 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
   );
 }
 
-function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm, onApplyCorrection, onStartResearch }) {
+function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm, onApplyCorrection, onStartResearch, onAskQuestion }) {
   const note = ep.note;
   const mkSeek = (t) => () => onSeekFrac(t / ep.durationSec);
   const isActive = (t) => Math.abs(t / ep.durationSec - playFrac) < 0.015;
@@ -508,6 +589,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
   return (
     <div
       ref={contRef}
+      data-reader-scroll=""
       onContextMenu={onContextMenu}
       onMouseDown={() => { if (menu) setMenu(null); }}
       style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative", animation: "pn-enter var(--dur-slow) var(--ease) both" }}
@@ -515,6 +597,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
       {menu && (
         <ContextMenu
           menu={menu} onVerify={verifyFromMenu} onClose={() => setMenu(null)}
+          onAsk={onAskQuestion ? () => { const t = menu.term; setMenu(null); onAskQuestion(t); } : undefined}
           onVerifyBlocks={verifyBlocksFromMenu} onClearPicks={clearPicks}
         />
       )}
@@ -616,15 +699,34 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
 
         <SectionHead idx="04" title="我可能想深挖的" />
         {note.questions.map((q, i) => (
-          <div key={i} style={{ display: "flex", gap: 8, marginTop: 16, alignItems: "baseline" }}>
+          <div
+            key={i}
+            role={onAskQuestion ? "button" : undefined}
+            title={onAskQuestion ? "在问答里追问这个问题" : undefined}
+            onClick={onAskQuestion ? () => onAskQuestion(q) : undefined}
+            onMouseEnter={(e) => { if (onAskQuestion) e.currentTarget.style.background = "var(--fill-hover)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            style={{
+              display: "flex", gap: 8, marginTop: 12, alignItems: "baseline",
+              padding: "4px 8px", margin: "12px -8px 0", borderRadius: "var(--radius-sm)",
+              cursor: onAskQuestion ? "pointer" : "default",
+              transition: "background var(--dur) var(--ease)",
+            }}
+          >
             <span style={{
               fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
               letterSpacing: "var(--tracking-machine)", color: "var(--scale)", flex: "none",
             }}>Q{i + 1}</span>
             <span style={{
               fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
-              color: "var(--ink)", lineHeight: "var(--leading-note)",
+              color: "var(--ink)", lineHeight: "var(--leading-note)", flex: 1,
             }}>{M(q)}</span>
+            {onAskQuestion && (
+              <span style={{
+                fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+                letterSpacing: "var(--tracking-machine)", color: "var(--scale)", flex: "none",
+              }}>追问 →</span>
+            )}
           </div>
         ))}
       </div>
@@ -758,10 +860,13 @@ const Hint = ({ children, ink }) => (
   }}>{children}</div>
 );
 
-export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, tts, ttsSeg, onToggleTts, onCycleTtsRate, onRegenerateNote, onRegenerateTranscript, corrections, onResearchTerm, onApplyCorrection, onResearchBlocks, onCancelResearch, onRetry, onGoSettings }) {
+export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, transcript, onLoadTranscript, onTogglePlay, onSeekFrac, onCycleSpeed, onToggleRead, tts, ttsSeg, onToggleTts, onCycleTtsRate, onRegenerateNote, onRegenerateTranscript, corrections, onResearchTerm, onApplyCorrection, onResearchBlocks, onCancelResearch, qaApi, onRetry, onGoSettings }) {
   // ===== 块级核查会话(放这层:Reader 切 tab 会卸载,抽屉要活过 tab 切换) =====
   const [session, setSession] = useState(null);
   const researchReq = useRef(null); // 当前 reqId;过期事件丢弃
+  // ===== 问答抽屉:与核查抽屉互斥(并排放不下,语境也不同) =====
+  const [qaOpen, setQaOpen] = useState(false);
+  const [qaPrefill, setQaPrefill] = useState("");
   const cancelResearch = () => {
     if (researchReq.current) {
       onCancelResearch?.(researchReq.current);
@@ -771,6 +876,7 @@ export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, tran
   /** 发起核查:先中止旧会话;错误也走 error 事件进时间线,invoke 的 reject 静默 */
   const startResearch = (blocks) => {
     cancelResearch();
+    setQaOpen(false);
     const reqId = crypto.randomUUID();
     researchReq.current = reqId;
     setSession(startSession(reqId, blocks.length));
@@ -780,14 +886,24 @@ export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, tran
     })?.catch?.(() => {});
   };
   const closeResearch = () => { cancelResearch(); setSession(null); };
+  /** 打开问答(可带预填问题):关掉核查抽屉腾位 */
+  const openQa = (prefill = "") => {
+    cancelResearch();
+    setSession(null);
+    setQaPrefill(prefill);
+    setQaOpen(true);
+  };
   // 切剧集:中止并收抽屉(cleanup 在 id 变化与卸载时跑)
-  useEffect(() => () => { cancelResearch(); setSession(null); }, [ep?.id]);
+  useEffect(() => () => { cancelResearch(); setSession(null); setQaOpen(false); setQaPrefill(""); }, [ep?.id]);
 
   if (!ep) return null;
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", gap: 16 }}>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-        <Console key={ep.id} ep={ep} onToggleRead={onToggleRead} tts={tts} onToggleTts={onToggleTts} onCycleTtsRate={onCycleTtsRate} />
+        <Console
+          key={ep.id} ep={ep} onToggleRead={onToggleRead} tts={tts} onToggleTts={onToggleTts} onCycleTtsRate={onCycleTtsRate}
+          onToggleQa={ep.note && qaApi ? () => (qaOpen ? setQaOpen(false) : openQa()) : undefined}
+        />
         {ep.status === "ready" && ep.note ? (
           <>
             <ReaderTabs
@@ -800,6 +916,7 @@ export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, tran
               onResearchTerm={onResearchTerm}
               onApplyCorrection={onApplyCorrection}
               onStartResearch={startResearch}
+              onAskQuestion={qaApi ? openQa : undefined}
             />
             <Player
               ep={ep} playFrac={playFrac} playing={playing} speed={speed} bars={bars} downloadPct={downloadPct}
@@ -810,14 +927,22 @@ export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, tran
           <StateWell ep={ep} onRetry={onRetry} onGoSettings={onGoSettings} />
         )}
       </div>
-      {session && (
+      {session ? (
         <ResearchDrawer
           session={session}
           onAbort={() => onCancelResearch?.(researchReq.current)}
           onClose={closeResearch}
           onApply={onApplyCorrection}
         />
-      )}
+      ) : qaOpen && qaApi && ep.note ? (
+        <QaDrawer
+          ep={ep}
+          api={qaApi}
+          prefill={qaPrefill}
+          onSeekSec={(sec) => onSeekFrac(sec / ep.durationSec)}
+          onClose={() => setQaOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

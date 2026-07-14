@@ -448,6 +448,7 @@ function LiveApp() {
       subAuto: next.subAuto ?? true,
       ttsVoice: next.ttsVoice || "Cherry",
       ttsRate: next.ttsRate ?? 1.5,
+      exportWikilinks: next.exportWikilinks ?? false,
     });
     refreshSettings();
   };
@@ -524,6 +525,8 @@ function LiveApp() {
             onAdd={() => { setAdding(true); setAddAct("input"); setAddErr(""); }}
             onSubs={() => setView("subs")}
             onSettings={() => setView("settings")}
+            onExportEpisode={(id) => api.exportEpisode(id)}
+            onExportShow={(show) => api.exportShow(show)}
           />
           {episodes.length === 0 ? (
             <Empty
@@ -553,6 +556,11 @@ function LiveApp() {
               onCycleSpeed={cycleSpeed}
               onToggleRead={toggleRead}
               corrections={correctionsMap[ep?.id] ?? []}
+              qaApi={ep ? {
+                get: () => api.getQa(ep.id),
+                ask: (q, history, onEvent) => api.askEpisode(ep.id, q, history, onEvent),
+                cancel: () => api.cancelAsk(ep.id),
+              } : undefined}
               onResearchTerm={(term, context) => api.researchTerm(ep.id, term, context)}
               onResearchBlocks={(reqId, blocks, onEvent) => api.researchBlocks(ep.id, reqId, blocks, onEvent)}
               onCancelResearch={(reqId) => api.cancelResearch(reqId)}

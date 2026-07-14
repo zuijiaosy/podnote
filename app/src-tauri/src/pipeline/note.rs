@@ -81,6 +81,11 @@ pub fn parse_note(raw: &str) -> Result<Note, ParseError> {
 }
 
 pub fn note_to_markdown(meta: &EpisodeMeta, note: &Note) -> String {
+    note_to_markdown_opts(meta, note, false)
+}
+
+/// wikilinks:资源名渲染成 [[]](Obsidian 图谱用);去掉会破坏 wikilink 语义的 ]|# 字符
+pub fn note_to_markdown_opts(meta: &EpisodeMeta, note: &Note, wikilinks: bool) -> String {
     let mut l: Vec<String> = Vec::new();
     l.push(format!("# {}", meta.title));
     l.push(String::new());
@@ -110,7 +115,19 @@ pub fn note_to_markdown(meta: &EpisodeMeta, note: &Note) -> String {
         l.push(
             note.resources
                 .iter()
-                .map(|r| format!("- **{}** — {}", r.name, r.note))
+                .map(|r| {
+                    if wikilinks {
+                        let clean = r
+                            .name
+                            .replace(['[', ']', '|', '#'], " ")
+                            .split_whitespace()
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        format!("- [[{}]] — {}", clean, r.note)
+                    } else {
+                        format!("- **{}** — {}", r.name, r.note)
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join("\n"),
         );

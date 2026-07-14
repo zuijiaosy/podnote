@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
+use crate::export;
 use crate::library::{ensure_dir, episode_id, short_date, EpisodeRecord, Library};
 use crate::pipeline::{agent, asr, correct, glossary, llm, note, resolve, summarize, tavily, tts, vocab};
 use crate::subscriptions::{pick_new, SubStore, Subscription};
@@ -30,6 +31,8 @@ pub struct AppState {
     pub checking_subs: AtomicBool,
     /// 进行中的块级核查:reqId → 取消标志(关抽屉/切集时置位中止 agent)
     pub research_cancel: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    /// 进行中的问答:episode id → 中止信号;单集同时只允许一个活跃提问
+    pub asking: Mutex<HashMap<String, Arc<tokio::sync::Notify>>>,
 }
 
 // ===== 设置(非敏感项存 settings.json;key 存 macOS 钥匙串) =====
@@ -50,6 +53,8 @@ pub struct Settings {
     pub tts_voice: String,
     /// 朗读倍速(独立于播客原声倍速)
     pub tts_rate: f64,
+    /// 导出的资源条目渲染成 [[wikilink]](Obsidian 图谱);默认关,不替用户往 vault 里造节点
+    pub export_wikilinks: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -63,7 +68,27 @@ impl Default for Settings {
             sub_auto: true,
             tts_voice: tts::DEFAULT_VOICE.into(),
             tts_rate: 1.5,
+            export_wikilinks: false,
         }
+    }
+}
+
+/// 导出结果 → 系统通知(冲突/文件消失/失败才打扰;正常写入静默)
+fn notify_export(app: &AppHandle, res: Result<export::Outcome, String>) {
+    let body = match res {
+        Ok(export::Outcome::Written(_)) => None,
+        Ok(export::Outcome::Conflict(p)) => Some(format!(
+            "导出文件被你改动过,原文件未动;新版本在 {}",
+            p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+        )),
+        Ok(export::Outcome::MissingOriginal(p)) => Some(format!(
+            "导出文件已不存在({}),未自动重建",
+            p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+        )),
+        Err(e) => Some(format!("笔记导出失败: {e}")),
+    };
+    if let Some(b) = body {
+        let _ = app.notification().builder().title("Podnote 导出").body(b).show();
     }
 }
 
@@ -257,7 +282,9 @@ pub fn get_note_markdown(state: State<AppState>, id: String) -> Option<String> {
 
 #[tauri::command]
 pub fn delete_episode(state: State<AppState>, id: String) -> Result<(), String> {
-    state.lib.lock().unwrap().remove(&id).map_err(|e| e.to_string())
+    let lib = state.lib.lock().unwrap();
+    export::forget(&lib, &id); // 外部导出文件是用户的,留下;只销记账
+    lib.remove(&id).map_err(|e| e.to_string())
 }
 
 /// 归档/取消归档(消费状态,与管线状态正交)
@@ -671,6 +698,7 @@ pub async fn research_term(
 /// 返回笔记里的替换处数
 #[tauri::command]
 pub fn apply_correction(
+    app: AppHandle,
     state: State<AppState>,
     id: String,
     original: String,
@@ -716,10 +744,8 @@ pub fn apply_correction(
     let _ = fs::write(lib.note_md_path(&id), &md);
     let settings = load_settings(&lib);
     if let Some(dir) = settings.notes_dir.as_deref().filter(|d| !d.is_empty()) {
-        let base = std::path::Path::new(dir);
-        if fs::create_dir_all(base).is_ok() {
-            let _ = fs::write(base.join(format!("{}.md", meta.title.replace('/', "-"))), &md);
-        }
+        let content = export::render(&meta, &parsed, settings.export_wikilinks);
+        notify_export(&app, export::export_note(&lib, dir, &id, &meta, &content, false));
     }
 
     // 2. 字幕同步(用户决策:笔记+字幕都改)
@@ -759,10 +785,374 @@ pub fn apply_correction(
     Ok(count)
 }
 
+/// 读取单集的 {meta, note} 双产物,拼出导出正文(显式导出共用)
+fn render_export(lib: &Library, id: &str, settings: &Settings) -> Result<(resolve::EpisodeMeta, String), String> {
+    let doc: serde_json::Value = fs::read_to_string(lib.note_json_path(id))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .ok_or("这一集还没有生成笔记")?;
+    let parsed: note::Note = serde_json::from_value(doc.get("note").cloned().unwrap_or_default())
+        .map_err(|e| format!("笔记数据损坏: {e}"))?;
+    let meta: resolve::EpisodeMeta =
+        fs::read_to_string(lib.root.join("meta").join(format!("{id}.json")))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| resolve::EpisodeMeta {
+                url: doc.pointer("/meta/url").and_then(|v| v.as_str()).unwrap_or("").into(),
+                audio_url: String::new(),
+                title: doc.pointer("/meta/title").and_then(|v| v.as_str()).unwrap_or("").into(),
+                podcast: doc.pointer("/meta/podcast").and_then(|v| v.as_str()).unwrap_or("").into(),
+                shownotes: String::new(),
+                duration: doc.pointer("/meta/durationSec").and_then(|v| v.as_u64()),
+                pub_date: doc.pointer("/meta/pubDate").and_then(|v| v.as_str()).map(String::from),
+            });
+    let content = export::render(&meta, &parsed, settings.export_wikilinks);
+    Ok((meta, content))
+}
+
+fn file_name_of(p: &std::path::Path) -> String {
+    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// 显式导出单集(磁带架右键):返回回执文案给菜单原位展示,同时发系统通知
+#[tauri::command]
+pub fn export_episode(app: AppHandle, state: State<AppState>, id: String) -> Result<String, String> {
+    let lib = state.lib.lock().unwrap();
+    let settings = load_settings(&lib);
+    let Some(dir) = settings.notes_dir.clone().filter(|d| !d.is_empty()) else {
+        return Err("先在设置里选择「笔记导出目录」".into());
+    };
+    let (meta, content) = render_export(&lib, &id, &settings)?;
+    let body = match export::export_note(&lib, &dir, &id, &meta, &content, true)? {
+        export::Outcome::Written(p) => format!("已导出: {}", file_name_of(&p)),
+        export::Outcome::Conflict(p) => {
+            format!("文件被你改动过,原文件未动;新版在 {}", file_name_of(&p))
+        }
+        export::Outcome::MissingOriginal(p) => format!("导出文件已不存在({})", file_name_of(&p)),
+    };
+    let _ = app.notification().builder().title("Podnote 导出").body(body.clone()).show();
+    Ok(body)
+}
+
+/// 显式导出某频道全部已完成单集(频道条右键):返回真实汇总回执;全部失败按错误返回
+#[tauri::command]
+pub fn export_show(app: AppHandle, state: State<AppState>, show: String) -> Result<String, String> {
+    let lib = state.lib.lock().unwrap();
+    let settings = load_settings(&lib);
+    let Some(dir) = settings.notes_dir.clone().filter(|d| !d.is_empty()) else {
+        return Err("先在设置里选择「笔记导出目录」".into());
+    };
+    let ids: Vec<String> = lib
+        .list()
+        .into_iter()
+        .filter(|r| r.show == show && r.status == "ready")
+        .map(|r| r.id)
+        .collect();
+    if ids.is_empty() {
+        return Err("这个频道还没有已完成的单集".into());
+    }
+    let (mut written, mut conflicts, mut failed) = (0usize, 0usize, 0usize);
+    for id in &ids {
+        match render_export(&lib, id, &settings)
+            .and_then(|(meta, content)| export::export_note(&lib, &dir, id, &meta, &content, true))
+        {
+            Ok(export::Outcome::Written(_)) => written += 1,
+            Ok(export::Outcome::Conflict(_)) => conflicts += 1,
+            Ok(export::Outcome::MissingOriginal(_)) => failed += 1,
+            Err(_) => failed += 1,
+        }
+    }
+    if written == 0 && conflicts == 0 {
+        return Err(format!("导出失败({failed} 集都没写成)"));
+    }
+    let mut body = format!("已导出 {written} 集");
+    if conflicts > 0 {
+        body.push_str(&format!(",{conflicts} 集有你的改动(新版在 .podnote-new.md)"));
+    }
+    if failed > 0 {
+        body.push_str(&format!(",{failed} 集失败"));
+    }
+    let _ = app
+        .notification()
+        .builder()
+        .title("Podnote 导出")
+        .body(format!("「{show}」{body}"))
+        .show();
+    Ok(body)
+}
+
 #[tauri::command]
 pub fn get_corrections(state: State<AppState>, id: String) -> Vec<correct::CorrectionRecord> {
     let path = state.lib.lock().unwrap().corrections_path(&id);
     correct::load_corrections(&path)
+}
+
+// ===== 单集问答:转写稿全文 + 多轮历史,流式回答,时间戳吸附,revision 盖戳日志 =====
+
+const QA_PROMPT: &str = include_str!("../../../prompts/qa.md");
+const QA_PROMPT_VERSION: &str = "qa-1";
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum QaEvent {
+    /// 流式文本增量
+    Delta { text: String },
+    /// 终局:完整一轮(含吸附后的可点引用、用量、revision)
+    Done { round: QaRound },
+}
+
+/// 内容版本指纹:转写稿/笔记变了,旧回答标"基于旧版内容"且不再续入上下文;
+/// model/protocol 只作审计,不触发过期
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QaRevision {
+    pub transcript_hash: String,
+    pub note_hash: String,
+    pub prompt_version: String,
+    pub model: String,
+    pub protocol: String,
+}
+
+/// 吸附成功的时间戳引用:ts 是回答里的原样文本,sec 是最近句首的真实秒数
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QaRef {
+    pub ts: String,
+    pub sec: f64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QaRound {
+    pub q: String,
+    pub a: String,
+    pub refs: Vec<QaRef>,
+    #[serde(default)]
+    pub usage: Option<llm::Usage>,
+    pub revision: QaRevision,
+    pub created_at: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QaHistoryItem {
+    pub q: String,
+    pub a: String,
+}
+
+fn qa_path(lib: &Library, id: &str) -> std::path::PathBuf {
+    lib.root.join("qa").join(format!("{id}.json"))
+}
+
+fn load_qa(lib: &Library, id: &str) -> Vec<QaRound> {
+    fs::read_to_string(qa_path(lib, id))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn current_revision(lib: &Library, id: &str, settings: &Settings) -> QaRevision {
+    let hash_of = |p: std::path::PathBuf| {
+        fs::read(p).map(|b| export::fnv1a(&b)).unwrap_or_else(|_| "none".into())
+    };
+    QaRevision {
+        transcript_hash: hash_of(lib.asr_path(id)),
+        note_hash: hash_of(lib.note_json_path(id)),
+        prompt_version: QA_PROMPT_VERSION.into(),
+        model: settings.llm_model.clone(),
+        protocol: settings.llm_api.clone(),
+    }
+}
+
+/// 从回答提取 [h:mm:ss]/[mm:ss] 引用,吸附到 ±15s 内最近的转写句首(并列取较早句)。
+/// 这是定位规范化,不是真实性证明——真实性靠用户点击回听;吸不上的不进表,前端渲染为纯文本。
+fn snap_refs(answer: &str, sent_secs: &[f64]) -> Vec<QaRef> {
+    let re = regex::Regex::new(r"\[(?:\d{1,2}:)?\d{1,2}:\d{2}\]").expect("字面量正则必然合法");
+    let mut out: Vec<QaRef> = Vec::new();
+    for m in re.find_iter(answer) {
+        let ts = m.as_str().trim_start_matches('[').trim_end_matches(']');
+        if out.iter().any(|r| r.ts == ts) {
+            continue;
+        }
+        let sec = crate::pipeline::note::ts_to_seconds(ts) as f64;
+        let mut best: Option<f64> = None;
+        for &s in sent_secs {
+            // 严格小于:等距时保留先遇到的较早句,避免提前剧透
+            if best.map(|b| (s - sec).abs() < (b - sec).abs()).unwrap_or(true) {
+                best = Some(s);
+            }
+        }
+        if let Some(b) = best {
+            if (b - sec).abs() <= 15.0 {
+                out.push(QaRef { ts: ts.to_string(), sec: b });
+            }
+        }
+    }
+    out
+}
+
+/// 问答记录 + 当前内容版本(前端据此画"内容已更新"分隔线并截断上下文)+ 输入量粗估
+#[tauri::command]
+pub fn get_qa(state: State<AppState>, id: String) -> serde_json::Value {
+    let lib = state.lib.lock().unwrap();
+    let settings = load_settings(&lib);
+    let timed = fs::read_to_string(lib.asr_path(&id))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .map(|v| asr::to_timed_text(&v))
+        .unwrap_or_default();
+    serde_json::json!({
+        "rounds": load_qa(&lib, &id),
+        "current": current_revision(&lib, &id, &settings),
+        // 粗估(中文约 2 字符/token):只标"约",不声称判断过模型窗口
+        "estInputTokens": timed.chars().count() / 2,
+    })
+}
+
+#[tauri::command]
+pub async fn ask_episode(
+    state: State<'_, AppState>,
+    id: String,
+    question: String,
+    history: Vec<QaHistoryItem>,
+    channel: tauri::ipc::Channel<QaEvent>,
+) -> Result<(), String> {
+    let question = question.trim().to_string();
+    if question.is_empty() {
+        return Err("问题不能为空".into());
+    }
+
+    // 锁内快照,不跨 await 持锁
+    let (client, cfg, meta, timed, sent_secs, revision) = {
+        let lib = state.lib.lock().unwrap();
+        let keys = state.keys.lock().unwrap();
+        let settings = load_settings(&lib);
+        if keys.llm.is_empty() {
+            return Err("还没配置 LLM API Key".into());
+        }
+        if settings.llm_base_url.is_empty() || settings.llm_model.is_empty() {
+            return Err("还没配置 LLM 网关地址或模型".into());
+        }
+        let asr_raw =
+            fs::read_to_string(lib.asr_path(&id)).map_err(|_| "这一集还没有转写稿".to_string())?;
+        let v: serde_json::Value = serde_json::from_str(&asr_raw).map_err(|e| e.to_string())?;
+        let timed = asr::to_timed_text(&v);
+        let sent_secs: Vec<f64> = v
+            .pointer("/transcripts/0/sentences")
+            .and_then(|s| s.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.get("begin_time").and_then(|x| x.as_u64()))
+                    .map(|ms| ms as f64 / 1000.0)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let meta: resolve::EpisodeMeta =
+            fs::read_to_string(lib.root.join("meta").join(format!("{id}.json")))
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .ok_or("找不到单集元信息")?;
+        let revision = current_revision(&lib, &id, &settings);
+        let cfg = llm::LlmConfig {
+            base_url: settings.llm_base_url.clone(),
+            api_key: keys.llm.clone(),
+            model: settings.llm_model.clone(),
+            protocol: llm::Protocol::from_id(&settings.llm_api),
+        };
+        (state.client.clone(), cfg, meta, timed, sent_secs, revision)
+    };
+
+    let system = QA_PROMPT
+        .replace("{{podcast}}", &meta.podcast)
+        .replace("{{title}}", &meta.title)
+        .replace("{{transcript}}", &timed);
+    let mut messages: Vec<llm::ChatMessage> = Vec::new();
+    for h in &history {
+        messages.push(llm::ChatMessage { role: "user".into(), content: h.q.clone() });
+        messages.push(llm::ChatMessage { role: "assistant".into(), content: h.a.clone() });
+    }
+    messages.push(llm::user_message(question.clone()));
+
+    // 单集单活跃请求:原子登记,占用即拒
+    let cancel = Arc::new(tokio::sync::Notify::new());
+    {
+        let mut asking = state.asking.lock().unwrap();
+        if asking.contains_key(&id) {
+            return Err("这一集已有进行中的提问".into());
+        }
+        asking.insert(id.clone(), cancel.clone());
+    }
+
+    // 请求体按协议补差:Responses 不留存对话 + 缓存键;Completions 显式要 usage;
+    // Anthropic 给稳定前缀(system=转写稿)打缓存标——命中与否以返回的 usage 为准
+    let cache_key = format!("podnote-qa-{id}");
+    let sys_for_patch = system.clone();
+    let protocol = cfg.protocol;
+    let patch = move |body: &mut serde_json::Value| match protocol {
+        llm::Protocol::OpenAiResponses => {
+            body["store"] = serde_json::json!(false);
+            body["prompt_cache_key"] = serde_json::json!(cache_key);
+        }
+        llm::Protocol::OpenAiCompletions => {
+            body["stream_options"] = serde_json::json!({ "include_usage": true });
+        }
+        llm::Protocol::AnthropicMessages => {
+            body["system"] = serde_json::json!([{
+                "type": "text", "text": sys_for_patch, "cache_control": { "type": "ephemeral" }
+            }]);
+        }
+    };
+
+    let ch = channel.clone();
+    let on_delta = move |t: &str| {
+        let _ = ch.send(QaEvent::Delta { text: t.to_string() });
+    };
+    let stream = llm::stream_chat_full(&client, &cfg, &system, &messages, None, Some(&patch), &on_delta);
+    // select 掉线即弃:取消发生在连接/首 token 阶段同样立刻生效(future 被 drop,连接随之断开)
+    let result = tokio::select! {
+        _ = cancel.notified() => Err("已取消".to_string()),
+        r = stream => r.map_err(|e| e.to_string()),
+    };
+
+    // 条件注销:仍是本次的信号才移除,防止清掉后续请求的登记
+    {
+        let mut asking = state.asking.lock().unwrap();
+        if asking.get(&id).map(|n| Arc::ptr_eq(n, &cancel)).unwrap_or(false) {
+            asking.remove(&id);
+        }
+    }
+
+    let (answer, usage) = result?;
+    let round = QaRound {
+        q: question,
+        a: answer.clone(),
+        refs: snap_refs(&answer, &sent_secs),
+        usage,
+        revision,
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+    };
+    // append-only 日志,原子落盘;取消/失败不会走到这里,不留半截回答
+    {
+        let lib = state.lib.lock().unwrap();
+        let mut rounds = load_qa(&lib, &id);
+        rounds.push(round.clone());
+        let path = qa_path(&lib, &id);
+        let _ = ensure_dir(&path);
+        export::write_atomic(&path, &serde_json::to_string_pretty(&rounds).unwrap_or_default())?;
+    }
+    let _ = channel.send(QaEvent::Done { round });
+    Ok(())
+}
+
+/// 中止进行中的提问(关抽屉/切集/手动停止)
+#[tauri::command]
+pub fn cancel_ask(state: State<AppState>, id: String) {
+    if let Some(n) = state.asking.lock().unwrap().get(&id) {
+        n.notify_one();
+    }
 }
 
 // ===== 块级批量核查:agent(LLM tool-calling + Tavily)全过程经 Channel 流式推送 =====
@@ -1082,10 +1472,13 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
         let _ = lib.update(&id, |r| r.status = "ready".into());
     }
     if let Some(dir) = settings.notes_dir.as_deref().filter(|d| !d.is_empty()) {
-        let base = std::path::Path::new(dir);
-        if fs::create_dir_all(base).is_ok() {
-            let _ = fs::write(base.join(format!("{}.md", meta.title.replace('/', "-"))), &md);
-        }
+        let content = export::render(&meta, &parsed, settings.export_wikilinks);
+        let res = {
+            let state = app.state::<AppState>();
+            let lib = state.lib.lock().unwrap();
+            export::export_note(&lib, dir, &id, &meta, &content, false)
+        };
+        notify_export(&app, res);
     }
     emit(&app, &id, "READY", "ready", "");
 }

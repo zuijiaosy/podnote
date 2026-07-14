@@ -258,6 +258,9 @@ export function Settings({
               <Button variant="secondary" size="sm" onClick={onChooseDir}>选择</Button>
             </div>
           </FieldRow>
+          <FieldRow title="资源条目 Wikilink" hint="导出的 Markdown 里资源名写成 [[链接]],喂 Obsidian 图谱">
+            <Lever on={!!view.exportWikilinks} onChange={(on) => onChangeField({ exportWikilinks: on })} />
+          </FieldRow>
           <FieldRow
             title="订阅自动处理"
             hint="新单集自动转写并生成笔记,每 30 分钟查一次 · 消耗你的 API 额度"
