@@ -12,7 +12,7 @@ use std::path::Path;
 /// LLM 配置(与主流程同一套 env:PI_BASE_URL / PI_API_KEY / PI_MODEL / PI_API)
 fn llm_from_env() -> summarize::LlmConfig {
     summarize::LlmConfig {
-        base_url: std::env::var("PI_BASE_URL").unwrap_or_else(|_| "https://api.codexzh.com/v1".into()),
+        base_url: std::env::var("PI_BASE_URL").unwrap_or_default(),
         api_key: std::env::var("PI_API_KEY")
             .or_else(|_| std::env::var("OPENAI_API_KEY"))
             .unwrap_or_default(),

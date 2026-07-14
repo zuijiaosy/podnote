@@ -6,7 +6,7 @@ import { Button, FieldRow, Input, Lever, Segmented, Select } from "../components
 import { StatusLabel, IndicatorLight } from "../components/instrument.jsx";
 
 const DEFAULTS = {
-  asrHost: "https://llm-xy8sn8964kplkx1s.cn-beijing.maas.aliyuncs.com",
+  asrHost: "https://dashscope.aliyuncs.com",
   llmApi: "openai-responses",
   ttsVoice: "Cherry",
 };

@@ -35,7 +35,7 @@ pub struct AppState {
     pub asking: Mutex<HashMap<String, Arc<tokio::sync::Notify>>>,
 }
 
-// ===== 设置(非敏感项存 settings.json;key 存 macOS 钥匙串) =====
+// ===== 设置(非敏感项存 settings.json;key 明文存 keys.json,见 CLAUDE.md 密钥取舍) =====
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]

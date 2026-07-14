@@ -24,7 +24,7 @@ impl Protocol {
         }
     }
 
-    /// 拼在 base_url(如 https://api.codexzh.com/v1)后面的请求路径
+    /// 拼在 base_url(如 https://api.example.com/v1)后面的请求路径
     pub fn path(&self) -> &'static str {
         match self {
             Self::OpenAiResponses => "/responses",
@@ -36,7 +36,7 @@ impl Protocol {
 
 #[derive(Debug, Clone)]
 pub struct LlmConfig {
-    pub base_url: String, // 如 https://api.codexzh.com/v1
+    pub base_url: String, // 如 https://api.example.com/v1
     pub api_key: String,
     pub model: String, // 如 grok-4.5
     pub protocol: Protocol,

@@ -1,10 +1,10 @@
 // asr — 百炼 fun-asr 异步转写,自带说话人分离(移植自 src/asr.mjs)
-// 音频不落地:公网音频 URL 直传;dashscope 标准异步 API(专属 host)
+// 音频不落地:公网音频 URL 直传;dashscope 标准异步 API(host 可在设置中改为专属端点)
 use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
 use std::time::Duration;
 
-pub const DEFAULT_HOST: &str = "https://llm-xy8sn8964kplkx1s.cn-beijing.maas.aliyuncs.com";
+pub const DEFAULT_HOST: &str = "https://dashscope.aliyuncs.com";
 const POLL_INTERVAL: Duration = Duration::from_secs(15);
 
 /// 阶段进度回调:(状态词, 附加信息)
