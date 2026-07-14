@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   check-version:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' 
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -29,8 +29,10 @@ jobs:
 
   build:
     needs: [check-version]
-    # dispatch 场景没有 check-version;always() + 结果判断让两种触发都能进入
-    if: always() && (needs.check-version.result == 'success' || needs.check-version.result == 'skipped')
+    # dispatch 可以在任意 ref(含 tag)上运行,一律按事件类型分流,不看 ref 形状
+    if: >-
+      always() &&
+      (github.event_name == 'workflow_dispatch' || needs.check-version.result == 'success')
     strategy:
       fail-fast: false
       matrix:
@@ -66,7 +68,7 @@ jobs:
         run: npm ci
 
       - name: 构建并发布(tag 触发)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -85,17 +87,17 @@ jobs:
               安装过程可能需要联网下载 WebView2 Runtime
 
             请只从本页下载安装包。详细配置见仓库 README。
-          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
 
       - name: 只构建不发布(手动触发)
-        if: "!startsWith(github.ref, 'refs/tags/v')"
+        if: github.event_name == 'workflow_dispatch' 
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         with:
           projectPath: app
-          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
 
       - name: 上传构建产物(手动触发)
-        if: "!startsWith(github.ref, 'refs/tags/v')"
+        if: github.event_name == 'workflow_dispatch' 
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: podnote-${{ matrix.target }}

@@ -1,4 +1,4 @@
-// P0 静态样张数据:两集真实笔记 + 三种状态假剧集(转写中/错误/排队)
+// P0 静态样张数据:两集虚构笔记样张 + 三种状态假剧集(转写中/错误/排队)
 // P2 接线后由 Rust library 的 get_library 替换
 import ep125 from "../fixtures/ep125.json";
 import ep143 from "../fixtures/ep143.json";
