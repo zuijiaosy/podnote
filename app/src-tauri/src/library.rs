@@ -101,10 +101,17 @@ impl Library {
         self.list().into_iter().find(|e| e.id == id)
     }
 
-    pub fn update<F: FnOnce(&mut EpisodeRecord)>(&self, id: &str, f: F) -> Result<Option<EpisodeRecord>> {
+    pub fn update<F: FnOnce(&mut EpisodeRecord)>(
+        &self,
+        id: &str,
+        f: F,
+    ) -> Result<Option<EpisodeRecord>> {
         let mut eps = self.list();
         let rec = match eps.iter_mut().find(|e| e.id == id) {
-            Some(r) => { f(r); Some(r.clone()) }
+            Some(r) => {
+                f(r);
+                Some(r.clone())
+            }
             None => None,
         };
         self.save_all(&eps)?;
@@ -115,7 +122,13 @@ impl Library {
     pub fn remove(&self, id: &str) -> Result<()> {
         let eps: Vec<_> = self.list().into_iter().filter(|e| e.id != id).collect();
         self.save_all(&eps)?;
-        for p in [self.asr_path(id), self.note_json_path(id), self.note_md_path(id), self.peaks_path(id), self.corrections_path(id)] {
+        for p in [
+            self.asr_path(id),
+            self.note_json_path(id),
+            self.note_md_path(id),
+            self.peaks_path(id),
+            self.corrections_path(id),
+        ] {
             let _ = fs::remove_file(p);
         }
         if let Some(p) = self.find_audio(id) {
@@ -178,14 +191,21 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("pn-test-{}", std::process::id()));
         let lib = Library::new(dir.clone()).unwrap();
         let rec = EpisodeRecord {
-            id: "abc12345".into(), url: "https://x".into(),
-            show: "S".into(), title: "T".into(), date: "07-10".into(),
-            duration_sec: 100, status: "queued".into(),
-            err_stage: None, err_message: None, read_at: None,
+            id: "abc12345".into(),
+            url: "https://x".into(),
+            show: "S".into(),
+            title: "T".into(),
+            date: "07-10".into(),
+            duration_sec: 100,
+            status: "queued".into(),
+            err_stage: None,
+            err_message: None,
+            read_at: None,
         };
         lib.upsert(rec.clone()).unwrap();
         assert_eq!(lib.list().len(), 1);
-        lib.update("abc12345", |r| r.status = "ready".into()).unwrap();
+        lib.update("abc12345", |r| r.status = "ready".into())
+            .unwrap();
         assert_eq!(lib.get("abc12345").unwrap().status, "ready");
         lib.remove("abc12345").unwrap();
         assert!(lib.list().is_empty());

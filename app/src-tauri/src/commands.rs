@@ -11,7 +11,9 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::export;
 use crate::library::{ensure_dir, episode_id, short_date, EpisodeRecord, Library};
-use crate::pipeline::{agent, asr, correct, glossary, llm, note, resolve, summarize, tavily, tts, vocab};
+use crate::pipeline::{
+    agent, asr, correct, glossary, llm, note, resolve, summarize, tavily, tts, vocab,
+};
 use crate::subscriptions::{pick_new, SubStore, Subscription};
 
 /// 密钥内存缓存:启动时读一次,运行期零钥匙串访问
@@ -79,16 +81,25 @@ fn notify_export(app: &AppHandle, res: Result<export::Outcome, String>) {
         Ok(export::Outcome::Written(_)) => None,
         Ok(export::Outcome::Conflict(p)) => Some(format!(
             "导出文件被你改动过,原文件未动;新版本在 {}",
-            p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+            p.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
         )),
         Ok(export::Outcome::MissingOriginal(p)) => Some(format!(
             "导出文件已不存在({}),未自动重建",
-            p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+            p.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
         )),
         Err(e) => Some(format!("笔记导出失败: {e}")),
     };
     if let Some(b) = body {
-        let _ = app.notification().builder().title("Podnote 导出").body(b).show();
+        let _ = app
+            .notification()
+            .builder()
+            .title("Podnote 导出")
+            .body(b)
+            .show();
     }
 }
 
@@ -104,7 +115,11 @@ pub fn keys_load(lib: &Library) -> Keys {
             .unwrap_or("")
             .to_string()
     };
-    Keys { asr: get("asrKey"), llm: get("llmKey"), tavily: get("tavilyKey") }
+    Keys {
+        asr: get("asrKey"),
+        llm: get("llmKey"),
+        tavily: get("tavilyKey"),
+    }
 }
 
 fn keys_save(lib: &Library, keys: &Keys) -> Result<(), String> {
@@ -203,7 +218,11 @@ pub async fn test_asr_key(state: State<'_, AppState>) -> Result<(), String> {
     let (client, host, key) = {
         let lib = state.lib.lock().unwrap();
         let keys = state.keys.lock().unwrap();
-        (state.client.clone(), load_settings(&lib).asr_host, keys.asr.clone())
+        (
+            state.client.clone(),
+            load_settings(&lib).asr_host,
+            keys.asr.clone(),
+        )
     };
     if key.is_empty() {
         return Err("还没填百炼 API Key".into());
@@ -238,10 +257,16 @@ pub async fn test_llm(state: State<'_, AppState>) -> Result<(), String> {
         )
     };
     // 最小对话:一次验证 key + 网关 + 协议 + 模型名的完整组合
-    llm::stream_chat(&client, &cfg, "这是连通性自检,只回答 OK。", &[llm::user_message("OK?")], &|_| {})
-        .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    llm::stream_chat(
+        &client,
+        &cfg,
+        "这是连通性自检,只回答 OK。",
+        &[llm::user_message("OK?")],
+        &|_| {},
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -417,7 +442,10 @@ async fn run_tts(app: AppHandle, id: String) {
     let write_manifest = |complete: bool| {
         let m = serde_json::json!({ "voice": voice, "complete": complete, "segments": seg_meta });
         let _ = ensure_dir(&manifest_path);
-        let _ = fs::write(&manifest_path, serde_json::to_string(&m).unwrap_or_default());
+        let _ = fs::write(
+            &manifest_path,
+            serde_json::to_string(&m).unwrap_or_default(),
+        );
     };
     write_manifest(false);
 
@@ -583,12 +611,19 @@ pub async fn download_audio(app: AppHandle, id: String) -> Result<String, String
     }
     drop(file);
     fs::rename(&tmp, &dest).map_err(|e| e.to_string())?;
-    let _ = app.emit("audio-progress", serde_json::json!({ "id": id, "pct": 100 }));
+    let _ = app.emit(
+        "audio-progress",
+        serde_json::json!({ "id": id, "pct": 100 }),
+    );
     Ok(dest.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
-pub fn add_episode(app: AppHandle, state: State<AppState>, url: String) -> Result<EpisodeRecord, String> {
+pub fn add_episode(
+    app: AppHandle,
+    state: State<AppState>,
+    url: String,
+) -> Result<EpisodeRecord, String> {
     let id = episode_id(&url).ok_or("这不是有效的小宇宙单集链接")?;
     let rec = EpisodeRecord {
         id: id.clone(),
@@ -602,7 +637,12 @@ pub fn add_episode(app: AppHandle, state: State<AppState>, url: String) -> Resul
         err_message: None,
         read_at: None,
     };
-    state.lib.lock().unwrap().upsert(rec.clone()).map_err(|e| e.to_string())?;
+    state
+        .lib
+        .lock()
+        .unwrap()
+        .upsert(rec.clone())
+        .map_err(|e| e.to_string())?;
     tauri::async_runtime::spawn(run_pipeline(app, id, false));
     Ok(rec)
 }
@@ -724,28 +764,47 @@ pub fn apply_correction(
             .map_err(|e| format!("笔记数据损坏: {e}"))?;
     let count = note::replace_term(&mut parsed, &original, &corrected);
     doc["note"] = serde_json::to_value(&parsed).map_err(|e| e.to_string())?;
-    fs::write(&note_path, serde_json::to_string_pretty(&doc).unwrap_or_default())
-        .map_err(|e| e.to_string())?;
+    fs::write(
+        &note_path,
+        serde_json::to_string_pretty(&doc).unwrap_or_default(),
+    )
+    .map_err(|e| e.to_string())?;
 
     // md 重渲:meta 优先读全量 meta/<id>.json,缺了从 note.json 的 meta 摘要重建
-    let meta: resolve::EpisodeMeta = fs::read_to_string(lib.root.join("meta").join(format!("{id}.json")))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| resolve::EpisodeMeta {
-            url: doc.pointer("/meta/url").and_then(|v| v.as_str()).unwrap_or("").into(),
-            audio_url: String::new(),
-            title: doc.pointer("/meta/title").and_then(|v| v.as_str()).unwrap_or("").into(),
-            podcast: doc.pointer("/meta/podcast").and_then(|v| v.as_str()).unwrap_or("").into(),
-            shownotes: String::new(),
-            duration: doc.pointer("/meta/durationSec").and_then(|v| v.as_u64()),
-            pub_date: None,
-        });
+    let meta: resolve::EpisodeMeta =
+        fs::read_to_string(lib.root.join("meta").join(format!("{id}.json")))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| resolve::EpisodeMeta {
+                url: doc
+                    .pointer("/meta/url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into(),
+                audio_url: String::new(),
+                title: doc
+                    .pointer("/meta/title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into(),
+                podcast: doc
+                    .pointer("/meta/podcast")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into(),
+                shownotes: String::new(),
+                duration: doc.pointer("/meta/durationSec").and_then(|v| v.as_u64()),
+                pub_date: None,
+            });
     let md = note::note_to_markdown(&meta, &parsed);
     let _ = fs::write(lib.note_md_path(&id), &md);
     let settings = load_settings(&lib);
     if let Some(dir) = settings.notes_dir.as_deref().filter(|d| !d.is_empty()) {
         let content = export::render(&meta, &parsed, settings.export_wikilinks);
-        notify_export(&app, export::export_note(&lib, dir, &id, &meta, &content, false));
+        notify_export(
+            &app,
+            export::export_note(&lib, dir, &id, &meta, &content, false),
+        );
     }
 
     // 2. 字幕同步(用户决策:笔记+字幕都改)
@@ -755,7 +814,10 @@ pub fn apply_correction(
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
     {
         if correct::replace_in_transcript(&mut asr_doc, &original, &corrected) > 0 {
-            let _ = fs::write(&asr_path, serde_json::to_string(&asr_doc).unwrap_or_default());
+            let _ = fs::write(
+                &asr_path,
+                serde_json::to_string(&asr_doc).unwrap_or_default(),
+            );
         }
     }
 
@@ -777,16 +839,31 @@ pub fn apply_correction(
             ts,
         },
     );
-    let show = lib.get(&id).map(|r| r.show).filter(|s| !s.is_empty()).unwrap_or_else(|| meta.podcast.clone());
+    let show = lib
+        .get(&id)
+        .map(|r| r.show)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| meta.podcast.clone());
     let _ = glossary::append(
         &lib.root,
-        glossary::GlossaryEntry { show, original, corrected, evidence_url, confidence, ts },
+        glossary::GlossaryEntry {
+            show,
+            original,
+            corrected,
+            evidence_url,
+            confidence,
+            ts,
+        },
     );
     Ok(count)
 }
 
 /// 读取单集的 {meta, note} 双产物,拼出导出正文(显式导出共用)
-fn render_export(lib: &Library, id: &str, settings: &Settings) -> Result<(resolve::EpisodeMeta, String), String> {
+fn render_export(
+    lib: &Library,
+    id: &str,
+    settings: &Settings,
+) -> Result<(resolve::EpisodeMeta, String), String> {
     let doc: serde_json::Value = fs::read_to_string(lib.note_json_path(id))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
@@ -798,25 +875,46 @@ fn render_export(lib: &Library, id: &str, settings: &Settings) -> Result<(resolv
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_else(|| resolve::EpisodeMeta {
-                url: doc.pointer("/meta/url").and_then(|v| v.as_str()).unwrap_or("").into(),
+                url: doc
+                    .pointer("/meta/url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into(),
                 audio_url: String::new(),
-                title: doc.pointer("/meta/title").and_then(|v| v.as_str()).unwrap_or("").into(),
-                podcast: doc.pointer("/meta/podcast").and_then(|v| v.as_str()).unwrap_or("").into(),
+                title: doc
+                    .pointer("/meta/title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into(),
+                podcast: doc
+                    .pointer("/meta/podcast")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into(),
                 shownotes: String::new(),
                 duration: doc.pointer("/meta/durationSec").and_then(|v| v.as_u64()),
-                pub_date: doc.pointer("/meta/pubDate").and_then(|v| v.as_str()).map(String::from),
+                pub_date: doc
+                    .pointer("/meta/pubDate")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
             });
     let content = export::render(&meta, &parsed, settings.export_wikilinks);
     Ok((meta, content))
 }
 
 fn file_name_of(p: &std::path::Path) -> String {
-    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// 显式导出单集(磁带架右键):返回回执文案给菜单原位展示,同时发系统通知
 #[tauri::command]
-pub fn export_episode(app: AppHandle, state: State<AppState>, id: String) -> Result<String, String> {
+pub fn export_episode(
+    app: AppHandle,
+    state: State<AppState>,
+    id: String,
+) -> Result<String, String> {
     let lib = state.lib.lock().unwrap();
     let settings = load_settings(&lib);
     let Some(dir) = settings.notes_dir.clone().filter(|d| !d.is_empty()) else {
@@ -830,7 +928,12 @@ pub fn export_episode(app: AppHandle, state: State<AppState>, id: String) -> Res
         }
         export::Outcome::MissingOriginal(p) => format!("导出文件已不存在({})", file_name_of(&p)),
     };
-    let _ = app.notification().builder().title("Podnote 导出").body(body.clone()).show();
+    let _ = app
+        .notification()
+        .builder()
+        .title("Podnote 导出")
+        .body(body.clone())
+        .show();
     Ok(body)
 }
 
@@ -867,7 +970,9 @@ pub fn export_show(app: AppHandle, state: State<AppState>, show: String) -> Resu
     }
     let mut body = format!("已导出 {written} 集");
     if conflicts > 0 {
-        body.push_str(&format!(",{conflicts} 集有你的改动(新版在 .podnote-new.md)"));
+        body.push_str(&format!(
+            ",{conflicts} 集有你的改动(新版在 .podnote-new.md)"
+        ));
     }
     if failed > 0 {
         body.push_str(&format!(",{failed} 集失败"));
@@ -953,7 +1058,9 @@ fn load_qa(lib: &Library, id: &str) -> Vec<QaRound> {
 
 fn current_revision(lib: &Library, id: &str, settings: &Settings) -> QaRevision {
     let hash_of = |p: std::path::PathBuf| {
-        fs::read(p).map(|b| export::fnv1a(&b)).unwrap_or_else(|_| "none".into())
+        fs::read(p)
+            .map(|b| export::fnv1a(&b))
+            .unwrap_or_else(|_| "none".into())
     };
     QaRevision {
         transcript_hash: hash_of(lib.asr_path(id)),
@@ -978,13 +1085,19 @@ fn snap_refs(answer: &str, sent_secs: &[f64]) -> Vec<QaRef> {
         let mut best: Option<f64> = None;
         for &s in sent_secs {
             // 严格小于:等距时保留先遇到的较早句,避免提前剧透
-            if best.map(|b| (s - sec).abs() < (b - sec).abs()).unwrap_or(true) {
+            if best
+                .map(|b| (s - sec).abs() < (b - sec).abs())
+                .unwrap_or(true)
+            {
                 best = Some(s);
             }
         }
         if let Some(b) = best {
             if (b - sec).abs() <= 15.0 {
-                out.push(QaRef { ts: ts.to_string(), sec: b });
+                out.push(QaRef {
+                    ts: ts.to_string(),
+                    sec: b,
+                });
             }
         }
     }
@@ -1068,8 +1181,14 @@ pub async fn ask_episode(
         .replace("{{transcript}}", &timed);
     let mut messages: Vec<llm::ChatMessage> = Vec::new();
     for h in &history {
-        messages.push(llm::ChatMessage { role: "user".into(), content: h.q.clone() });
-        messages.push(llm::ChatMessage { role: "assistant".into(), content: h.a.clone() });
+        messages.push(llm::ChatMessage {
+            role: "user".into(),
+            content: h.q.clone(),
+        });
+        messages.push(llm::ChatMessage {
+            role: "assistant".into(),
+            content: h.a.clone(),
+        });
     }
     messages.push(llm::user_message(question.clone()));
 
@@ -1105,9 +1224,19 @@ pub async fn ask_episode(
 
     let ch = channel.clone();
     let on_delta = move |t: &str| {
-        let _ = ch.send(QaEvent::Delta { text: t.to_string() });
+        let _ = ch.send(QaEvent::Delta {
+            text: t.to_string(),
+        });
     };
-    let stream = llm::stream_chat_full(&client, &cfg, &system, &messages, None, Some(&patch), &on_delta);
+    let stream = llm::stream_chat_full(
+        &client,
+        &cfg,
+        &system,
+        &messages,
+        None,
+        Some(&patch),
+        &on_delta,
+    );
     // select 掉线即弃:取消发生在连接/首 token 阶段同样立刻生效(future 被 drop,连接随之断开)
     let result = tokio::select! {
         _ = cancel.notified() => Err("已取消".to_string()),
@@ -1117,7 +1246,11 @@ pub async fn ask_episode(
     // 条件注销:仍是本次的信号才移除,防止清掉后续请求的登记
     {
         let mut asking = state.asking.lock().unwrap();
-        if asking.get(&id).map(|n| Arc::ptr_eq(n, &cancel)).unwrap_or(false) {
+        if asking
+            .get(&id)
+            .map(|n| Arc::ptr_eq(n, &cancel))
+            .unwrap_or(false)
+        {
             asking.remove(&id);
         }
     }
@@ -1141,7 +1274,10 @@ pub async fn ask_episode(
         rounds.push(round.clone());
         let path = qa_path(&lib, &id);
         let _ = ensure_dir(&path);
-        export::write_atomic(&path, &serde_json::to_string_pretty(&rounds).unwrap_or_default())?;
+        export::write_atomic(
+            &path,
+            &serde_json::to_string_pretty(&rounds).unwrap_or_default(),
+        )?;
     }
     let _ = channel.send(QaEvent::Done { round });
     Ok(())
@@ -1186,20 +1322,33 @@ pub async fn research_blocks(
     };
     // 注册取消标志;结束(含出错)时移除,防 map 泄漏
     let cancel = Arc::new(AtomicBool::new(false));
-    state.research_cancel.lock().unwrap().insert(req_id.clone(), cancel.clone());
+    state
+        .research_cancel
+        .lock()
+        .unwrap()
+        .insert(req_id.clone(), cancel.clone());
     let on_event = |ev: agent::AgentEvent| {
         let _ = channel.send(ev);
     };
-    let out =
-        agent::research_blocks(&client, &llm, &keys.tavily, &show, &blocks, &cancel, &on_event)
-            .await;
+    let out = agent::research_blocks(
+        &client,
+        &llm,
+        &keys.tavily,
+        &show,
+        &blocks,
+        &cancel,
+        &on_event,
+    )
+    .await;
     state.research_cancel.lock().unwrap().remove(&req_id);
     match out {
         Ok(_) => Ok(()),
         Err(e) => {
             // 错误也走事件(抽屉里可读);invoke 的 reject 同步返回给调用方
             let msg = e.to_string();
-            let _ = channel.send(agent::AgentEvent::Error { message: msg.clone() });
+            let _ = channel.send(agent::AgentEvent::Error {
+                message: msg.clone(),
+            });
             Err(msg)
         }
     }
@@ -1279,7 +1428,9 @@ async fn create_vocab_with_cleanup(
                     let _ = vocab::delete_vocabulary(client, host, key, &vid).await;
                 }
             }
-            vocab::create_vocabulary(client, host, key, terms).await.ok()
+            vocab::create_vocabulary(client, host, key, terms)
+                .await
+                .ok()
         }
     }
 }
@@ -1320,7 +1471,12 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
         return;
     }
     if settings.llm_base_url.is_empty() || settings.llm_model.is_empty() {
-        fail(&app, &id, "KEY", "还没配置 LLM 网关地址或模型,请到设置页填写");
+        fail(
+            &app,
+            &id,
+            "KEY",
+            "还没配置 LLM 网关地址或模型,请到设置页填写",
+        );
         return;
     }
     if asr_key.is_empty() && !asr_path.exists() {
@@ -1332,7 +1488,10 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
     set_status(&app, &id, "resolving");
     emit(&app, &id, "RESOLVE", "processing", "");
     let meta: resolve::EpisodeMeta = if force_note && meta_path.exists() {
-        match fs::read_to_string(&meta_path).ok().and_then(|s| serde_json::from_str(&s).ok()) {
+        match fs::read_to_string(&meta_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+        {
             Some(m) => m,
             None => match resolve::resolve_episode(&client, &url).await {
                 Ok(m) => m,
@@ -1370,7 +1529,10 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
     // --- TRANSCRIBE(缓存命中即跳过) ---
     let asr_result: serde_json::Value = if asr_path.exists() {
         emit(&app, &id, "TRANSCRIBE", "ready", "缓存命中");
-        match fs::read_to_string(&asr_path).ok().and_then(|s| serde_json::from_str(&s).ok()) {
+        match fs::read_to_string(&asr_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+        {
             Some(v) => v,
             None => return fail(&app, &id, "TRANSCRIBE", "转写缓存损坏,请删除后重试"),
         }
@@ -1386,10 +1548,12 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
             };
             let entries = glossary::load(&root);
             let entities =
-                vocab::extract_entities(&client, &llm, &meta.podcast, &meta.title, &meta.shownotes).await;
+                vocab::extract_entities(&client, &llm, &meta.podcast, &meta.title, &meta.shownotes)
+                    .await;
             vocab::build_terms(entities, &glossary::for_show(&entries, &meta.podcast))
         };
-        let vocab_id = create_vocab_with_cleanup(&client, &settings.asr_host, &asr_key, &terms).await;
+        let vocab_id =
+            create_vocab_with_cleanup(&client, &settings.asr_host, &asr_key, &terms).await;
 
         let start = Instant::now();
         let app2 = app.clone();
@@ -1398,9 +1562,15 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
             emit(&app2, &id2, "TRANSCRIBE", "processing", &fmt_elapsed(start));
         };
         emit(&app, &id, "TRANSCRIBE", "processing", "00:00");
-        let outcome =
-            asr::transcribe(&client, &settings.asr_host, &asr_key, &meta.audio_url, vocab_id.as_deref(), &progress)
-                .await;
+        let outcome = asr::transcribe(
+            &client,
+            &settings.asr_host,
+            &asr_key,
+            &meta.audio_url,
+            vocab_id.as_deref(),
+            &progress,
+        )
+        .await;
         // 临时词表转写完即删,成功失败都删(每账号配额只有 10 个)
         if let Some(vid) = vocab_id.as_deref() {
             let _ = vocab::delete_vocabulary(&client, &settings.asr_host, &asr_key, vid).await;
@@ -1429,20 +1599,27 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
     let app3 = app.clone();
     let id3 = id.clone();
     let progress = move |chars: usize| {
-        emit(&app3, &id3, "SUMMARIZE", "processing", &format!("{chars} 字"));
+        emit(
+            &app3,
+            &id3,
+            "SUMMARIZE",
+            "processing",
+            &format!("{chars} 字"),
+        );
     };
-    let parsed = match summarize::summarize(&client, &llm, &meta, &timed, &glossary_text, &progress).await {
-        Ok(n) => n,
-        Err(e) => {
-            // 解析失败把原始输出落盘,便于调 prompt
-            if let Some(raw) = note::raw_of(&e) {
-                let state = app.state::<AppState>();
-                let lib = state.lib.lock().unwrap();
-                let _ = fs::write(lib.root.join("notes").join(format!("{id}.raw.txt")), raw);
+    let parsed =
+        match summarize::summarize(&client, &llm, &meta, &timed, &glossary_text, &progress).await {
+            Ok(n) => n,
+            Err(e) => {
+                // 解析失败把原始输出落盘,便于调 prompt
+                if let Some(raw) = note::raw_of(&e) {
+                    let state = app.state::<AppState>();
+                    let lib = state.lib.lock().unwrap();
+                    let _ = fs::write(lib.root.join("notes").join(format!("{id}.raw.txt")), raw);
+                }
+                return fail(&app, &id, "SUMMARIZE", &e.to_string());
             }
-            return fail(&app, &id, "SUMMARIZE", &e.to_string());
-        }
-    };
+        };
 
     // 历史纠正兜底重放:glossary 已注入 prompt,LLM 若仍输出错词在此修正(幂等)
     let mut parsed = parsed;
@@ -1466,7 +1643,10 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
     {
         let state = app.state::<AppState>();
         let lib = state.lib.lock().unwrap();
-        let _ = fs::write(lib.note_json_path(&id), serde_json::to_string_pretty(&note_json).unwrap_or_default());
+        let _ = fs::write(
+            lib.note_json_path(&id),
+            serde_json::to_string_pretty(&note_json).unwrap_or_default(),
+        );
         let _ = fs::write(lib.note_md_path(&id), &md);
         tts_invalidate(&lib, &id); // 笔记内容变了,旧朗读作废
         let _ = lib.update(&id, |r| r.status = "ready".into());
@@ -1505,13 +1685,17 @@ pub async fn add_subscription(app: AppHandle, url: String) -> Result<Subscriptio
     let pid = if let Some(pid) = resolve::podcast_pid_from_url(&url) {
         pid
     } else if episode_id(&url).is_some() && url.contains("/episode/") {
-        let html = resolve::fetch_html(&client, &url).await.map_err(|e| e.to_string())?;
+        let html = resolve::fetch_html(&client, &url)
+            .await
+            .map_err(|e| e.to_string())?;
         resolve::podcast_pid_in_episode_html(&html)
             .ok_or("没从单集页解析出节目 pid——小宇宙页面结构可能变了")?
     } else {
         return Err("请粘贴小宇宙节目页或单集页链接".into());
     };
-    let feed = resolve::resolve_podcast(&client, &pid).await.map_err(|e| e.to_string())?;
+    let feed = resolve::resolve_podcast(&client, &pid)
+        .await
+        .map_err(|e| e.to_string())?;
     // 基线 = 当前最新一集:订阅只管未来,不回灌旧集
     let last_pub = feed
         .episodes
@@ -1519,8 +1703,14 @@ pub async fn add_subscription(app: AppHandle, url: String) -> Result<Subscriptio
         .map(|e| e.pub_date.clone())
         .max()
         .unwrap_or_default();
-    let sub = Subscription { pid: feed.pid, title: feed.title, last_pub };
-    sub_store(&app).upsert(sub.clone()).map_err(|e| e.to_string())?;
+    let sub = Subscription {
+        pid: feed.pid,
+        title: feed.title,
+        last_pub,
+    };
+    sub_store(&app)
+        .upsert(sub.clone())
+        .map_err(|e| e.to_string())?;
     let _ = app.emit("subscriptions-changed", ());
     Ok(sub)
 }
@@ -1539,11 +1729,17 @@ pub async fn check_subscriptions(app: AppHandle) -> Result<u32, String> {
 }
 
 async fn check_all_subscriptions(app: &AppHandle) -> Result<u32, String> {
-    if app.state::<AppState>().checking_subs.swap(true, Ordering::SeqCst) {
+    if app
+        .state::<AppState>()
+        .checking_subs
+        .swap(true, Ordering::SeqCst)
+    {
         return Err("上一轮检查还在进行中".into());
     }
     let result = do_check_subscriptions(app).await;
-    app.state::<AppState>().checking_subs.store(false, Ordering::SeqCst);
+    app.state::<AppState>()
+        .checking_subs
+        .store(false, Ordering::SeqCst);
     result
 }
 

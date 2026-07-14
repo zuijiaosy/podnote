@@ -43,7 +43,10 @@ pub async fn create_vocabulary(
     key: &str,
     terms: &[String],
 ) -> Result<String> {
-    let vocabulary: Vec<Value> = terms.iter().map(|t| json!({ "text": t, "weight": 4 })).collect();
+    let vocabulary: Vec<Value> = terms
+        .iter()
+        .map(|t| json!({ "text": t, "weight": 4 }))
+        .collect();
     let out = customization(
         client,
         host,
@@ -96,7 +99,11 @@ pub async fn list_podnote_vocabularies(
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.get("vocabulary_id").and_then(|x| x.as_str()).map(String::from))
+                .filter_map(|v| {
+                    v.get("vocabulary_id")
+                        .and_then(|x| x.as_str())
+                        .map(String::from)
+                })
                 .collect()
         })
         .unwrap_or_default())
@@ -117,7 +124,15 @@ pub async fn extract_entities(
         .replace("{{podcast}}", podcast)
         .replace("{{title}}", title)
         .replace("{{shownotes}}", shownotes);
-    match llm::stream_chat(client, cfg, ENTITIES_SYSTEM, &[user_message(&prompt)], &|_| {}).await {
+    match llm::stream_chat(
+        client,
+        cfg,
+        ENTITIES_SYSTEM,
+        &[user_message(&prompt)],
+        &|_| {},
+    )
+    .await
+    {
         Ok(out) => parse_string_array(&out),
         Err(_) => vec![],
     }
@@ -125,7 +140,9 @@ pub async fn extract_entities(
 
 /// 容忍代码围栏与前后杂讯:取首个 [ 到末个 ] 之间解析(与 note.rs 的 JSON 容错同思路)
 pub fn parse_string_array(raw: &str) -> Vec<String> {
-    let (Some(s), Some(e)) = (raw.find('['), raw.rfind(']')) else { return vec![] };
+    let (Some(s), Some(e)) = (raw.find('['), raw.rfind(']')) else {
+        return vec![];
+    };
     if e <= s {
         return vec![];
     }
@@ -191,10 +208,10 @@ mod tests {
         let entries = vec![&e1];
         let terms = build_terms(
             vec![
-                "面基".into(),                          // 与纠正词重复 → 去重
-                "  Lex Fridman  ".into(),               // trim 后保留
+                "面基".into(),                             // 与纠正词重复 → 去重
+                "  Lex Fridman  ".into(),                  // trim 后保留
                 "一二三四五六七八九十一二三四五六".into(), // 16 个非 ASCII 字符 → 过滤
-                "a b c d e f g h".into(),              // 8 段 ASCII → 过滤
+                "a b c d e f g h".into(),                  // 8 段 ASCII → 过滤
                 "".into(),
             ],
             &entries,

@@ -251,7 +251,10 @@ mod tests {
         });
         let segs = note_segments(&note);
         let keys: Vec<_> = segs.iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!(keys, vec!["tldr", "point-0", "point-1", "point-2", "quote-0"]);
+        assert_eq!(
+            keys,
+            vec!["tldr", "point-0", "point-1", "point-2", "quote-0"]
+        );
         assert_eq!(segs[1].1, "标题A。正文A");
         assert_eq!(segs[3].1, "只有标题");
     }

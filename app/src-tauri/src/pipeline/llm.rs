@@ -50,7 +50,10 @@ pub struct ChatMessage {
 }
 
 pub fn user_message(content: impl Into<String>) -> ChatMessage {
-    ChatMessage { role: "user".into(), content: content.into() }
+    ChatMessage {
+        role: "user".into(),
+        content: content.into(),
+    }
 }
 
 /// 工具定义;parameters 是 JSON Schema,三协议的字段差异见 request_body_tools
@@ -79,13 +82,20 @@ pub struct ToolResult {
 /// agent 多轮消息(带工具轮次);纯文本对话仍走 ChatMessage/stream_chat
 #[derive(Debug, Clone)]
 pub enum AgentMsg {
-    User { content: String },
-    Assistant { text: String, tool_calls: Vec<ToolCall> },
+    User {
+        content: String,
+    },
+    Assistant {
+        text: String,
+        tool_calls: Vec<ToolCall>,
+    },
     ToolResults(Vec<ToolResult>),
 }
 
 pub fn agent_user(content: impl Into<String>) -> AgentMsg {
-    AgentMsg::User { content: content.into() }
+    AgentMsg::User {
+        content: content.into(),
+    }
 }
 
 /// 按协议构造请求体(纯函数,单测友好)
@@ -160,7 +170,8 @@ pub fn request_body_tools(
                     }
                 }
             }
-            let mut b = json!({ "model": model, "instructions": system, "input": input, "stream": true });
+            let mut b =
+                json!({ "model": model, "instructions": system, "input": input, "stream": true });
             if !tools.is_empty() {
                 // Responses 的工具定义是扁平结构(不嵌套 function)
                 b["tools"] = tools
@@ -275,11 +286,23 @@ pub fn request_body_tools(
 pub enum Delta {
     Text(String),
     /// 工具调用开始:Completions 首片带 id/name;Responses/Anthropic 的 start 事件
-    ToolCallStart { index: usize, id: String, name: String },
+    ToolCallStart {
+        index: usize,
+        id: String,
+        name: String,
+    },
     /// 工具调用参数分片,按 index 拼接
-    ToolCallArgs { index: usize, args: String },
+    ToolCallArgs {
+        index: usize,
+        args: String,
+    },
     /// 工具调用整体完成(仅 Responses output_item.done):携带权威全量参数,整体覆盖
-    ToolCallDone { index: usize, id: String, name: String, args: String },
+    ToolCallDone {
+        index: usize,
+        id: String,
+        name: String,
+        args: String,
+    },
     Err(String),
 }
 
@@ -297,10 +320,15 @@ pub fn extract_deltas(protocol: Protocol, event: &Value) -> Vec<Delta> {
             // 函数调用条目出现:取 call_id(回传 function_call_output 认它,不是 item.id)与函数名
             "response.output_item.added" | "response.output_item.done" => {
                 let item = event.get("item");
-                if item.and_then(|i| i.get("type")).and_then(|v| v.as_str()) != Some("function_call") {
+                if item.and_then(|i| i.get("type")).and_then(|v| v.as_str())
+                    != Some("function_call")
+                {
                     return vec![];
                 }
-                let index = event.get("output_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                let index = event
+                    .get("output_index")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as usize;
                 let id = str_of(item.and_then(|i| i.get("call_id")));
                 let name = str_of(item.and_then(|i| i.get("name")));
                 if ty == "response.output_item.added" {
@@ -308,16 +336,29 @@ pub fn extract_deltas(protocol: Protocol, event: &Value) -> Vec<Delta> {
                 } else {
                     // done 携带权威全量参数:有的网关不发分片,以此为准整体覆盖
                     let args = str_of(item.and_then(|i| i.get("arguments")));
-                    vec![Delta::ToolCallDone { index, id, name, args }]
+                    vec![Delta::ToolCallDone {
+                        index,
+                        id,
+                        name,
+                        args,
+                    }]
                 }
             }
             "response.function_call_arguments.delta" => {
-                let index = event.get("output_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                let index = event
+                    .get("output_index")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as usize;
                 event
                     .get("delta")
                     .and_then(|v| v.as_str())
                     .filter(|d| !d.is_empty())
-                    .map(|d| vec![Delta::ToolCallArgs { index, args: d.into() }])
+                    .map(|d| {
+                        vec![Delta::ToolCallArgs {
+                            index,
+                            args: d.into(),
+                        }]
+                    })
                     .unwrap_or_default()
             }
             "response.failed" | "error" => vec![Delta::Err(
@@ -344,10 +385,16 @@ pub fn extract_deltas(protocol: Protocol, event: &Value) -> Vec<Delta> {
                 out.push(Delta::Text(d.into()));
             }
             // tool_calls 分片:首片带 id/name,后续片按 index 拼 arguments
-            if let Some(tcs) = event.pointer("/choices/0/delta/tool_calls").and_then(|v| v.as_array()) {
+            if let Some(tcs) = event
+                .pointer("/choices/0/delta/tool_calls")
+                .and_then(|v| v.as_array())
+            {
                 for (i, tc) in tcs.iter().enumerate() {
-                    let index =
-                        tc.get("index").and_then(|v| v.as_u64()).map(|n| n as usize).unwrap_or(i);
+                    let index = tc
+                        .get("index")
+                        .and_then(|v| v.as_u64())
+                        .map(|n| n as usize)
+                        .unwrap_or(i);
                     let id = str_of(tc.get("id"));
                     let name = str_of(tc.pointer("/function/name"));
                     if !id.is_empty() || !name.is_empty() {
@@ -358,7 +405,10 @@ pub fn extract_deltas(protocol: Protocol, event: &Value) -> Vec<Delta> {
                         .and_then(|v| v.as_str())
                         .filter(|a| !a.is_empty())
                     {
-                        out.push(Delta::ToolCallArgs { index, args: args.into() });
+                        out.push(Delta::ToolCallArgs {
+                            index,
+                            args: args.into(),
+                        });
                     }
                 }
             }
@@ -386,13 +436,20 @@ pub fn extract_deltas(protocol: Protocol, event: &Value) -> Vec<Delta> {
                     .and_then(|v| v.as_str())
                     .filter(|s| !s.is_empty())
                 {
-                    vec![Delta::ToolCallArgs { index, args: pj.into() }]
+                    vec![Delta::ToolCallArgs {
+                        index,
+                        args: pj.into(),
+                    }]
                 } else {
                     vec![]
                 }
             }
             "error" => vec![Delta::Err(
-                event.pointer("/error/message").and_then(|v| v.as_str()).unwrap_or("未知错误").into(),
+                event
+                    .pointer("/error/message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知错误")
+                    .into(),
             )],
             _ => vec![],
         },
@@ -414,10 +471,18 @@ pub struct Usage {
 impl Usage {
     /// 后到的非空字段覆盖(Anthropic 的 message_delta 输出是累计值,覆盖语义正确)
     fn merge(&mut self, other: Usage) {
-        if other.input_tokens.is_some() { self.input_tokens = other.input_tokens; }
-        if other.output_tokens.is_some() { self.output_tokens = other.output_tokens; }
-        if other.cache_read_tokens.is_some() { self.cache_read_tokens = other.cache_read_tokens; }
-        if other.cache_write_tokens.is_some() { self.cache_write_tokens = other.cache_write_tokens; }
+        if other.input_tokens.is_some() {
+            self.input_tokens = other.input_tokens;
+        }
+        if other.output_tokens.is_some() {
+            self.output_tokens = other.output_tokens;
+        }
+        if other.cache_read_tokens.is_some() {
+            self.cache_read_tokens = other.cache_read_tokens;
+        }
+        if other.cache_write_tokens.is_some() {
+            self.cache_write_tokens = other.cache_write_tokens;
+        }
     }
 }
 
@@ -461,7 +526,10 @@ pub fn extract_usage(protocol: Protocol, event: &Value) -> Option<Usage> {
             }
             Some("message_delta") => {
                 let out = n(event.pointer("/usage/output_tokens"))?;
-                Some(Usage { output_tokens: Some(out), ..Default::default() })
+                Some(Usage {
+                    output_tokens: Some(out),
+                    ..Default::default()
+                })
             }
             _ => None,
         },
@@ -480,7 +548,11 @@ async fn run_stream(
     if cfg.api_key.is_empty() {
         bail!("缺少 LLM API Key");
     }
-    let url = format!("{}{}", cfg.base_url.trim_end_matches('/'), cfg.protocol.path());
+    let url = format!(
+        "{}{}",
+        cfg.base_url.trim_end_matches('/'),
+        cfg.protocol.path()
+    );
     let mut req = client.post(&url).bearer_auth(&cfg.api_key).json(body);
     if cfg.protocol == Protocol::AnthropicMessages {
         // 官方网关认 x-api-key + anthropic-version;兼容型网关认 Bearer,双发无害
@@ -492,7 +564,10 @@ async fn run_stream(
     if !res.status().is_success() {
         let status = res.status();
         let body = res.text().await.unwrap_or_default();
-        bail!("LLM 请求失败 {status}: {}", body.chars().take(300).collect::<String>());
+        bail!(
+            "LLM 请求失败 {status}: {}",
+            body.chars().take(300).collect::<String>()
+        );
     }
 
     let mut buf = String::new();
@@ -507,12 +582,16 @@ async fn run_stream(
         while let Some(pos) = buf.find('\n') {
             let line = buf[..pos].trim().to_string();
             buf.drain(..=pos);
-            let Some(data) = line.strip_prefix("data:") else { continue };
+            let Some(data) = line.strip_prefix("data:") else {
+                continue;
+            };
             let data = data.trim();
             if data == "[DONE]" {
                 continue;
             }
-            let Ok(event) = serde_json::from_str::<Value>(data) else { continue };
+            let Ok(event) = serde_json::from_str::<Value>(data) else {
+                continue;
+            };
             if let Some(u) = extract_usage(cfg.protocol, &event) {
                 usage.get_or_insert_with(Usage::default).merge(u);
             }
@@ -590,7 +669,11 @@ pub struct StepAccum {
 impl StepAccum {
     /// 吃进一个增量;返回需要向外转发的文本增量(进度显示用)
     pub fn push(&mut self, d: Delta) -> Option<String> {
-        let blank = || ToolCall { id: String::new(), name: String::new(), arguments: String::new() };
+        let blank = || ToolCall {
+            id: String::new(),
+            name: String::new(),
+            arguments: String::new(),
+        };
         match d {
             Delta::Text(t) => {
                 self.text.push_str(&t);
@@ -606,11 +689,27 @@ impl StepAccum {
                 }
             }
             Delta::ToolCallArgs { index, args } => {
-                self.calls.entry(index).or_insert_with(blank).arguments.push_str(&args);
+                self.calls
+                    .entry(index)
+                    .or_insert_with(blank)
+                    .arguments
+                    .push_str(&args);
             }
-            Delta::ToolCallDone { index, id, name, args } => {
+            Delta::ToolCallDone {
+                index,
+                id,
+                name,
+                args,
+            } => {
                 // 权威全量,整体覆盖分片拼接结果
-                self.calls.insert(index, ToolCall { id, name, arguments: args });
+                self.calls.insert(
+                    index,
+                    ToolCall {
+                        id,
+                        name,
+                        arguments: args,
+                    },
+                );
             }
             Delta::Err(msg) => self.err = Some(msg),
         }
@@ -622,12 +721,18 @@ impl StepAccum {
         if let Some(msg) = self.err {
             bail!("LLM 请求失败: {msg}");
         }
-        let tool_calls: Vec<ToolCall> =
-            self.calls.into_values().filter(|c| !c.name.is_empty()).collect();
+        let tool_calls: Vec<ToolCall> = self
+            .calls
+            .into_values()
+            .filter(|c| !c.name.is_empty())
+            .collect();
         if self.text.trim().is_empty() && tool_calls.is_empty() {
             bail!("LLM 没有返回任何内容——检查网关地址、模型名、协议和 key 是否正确");
         }
-        Ok(StepOut { text: self.text, tool_calls })
+        Ok(StepOut {
+            text: self.text,
+            tool_calls,
+        })
     }
 }
 
@@ -663,10 +768,22 @@ mod tests {
 
     #[test]
     fn protocol_from_id_with_fallback() {
-        assert_eq!(Protocol::from_id("openai-responses"), Protocol::OpenAiResponses);
-        assert_eq!(Protocol::from_id("openai-completions"), Protocol::OpenAiCompletions);
-        assert_eq!(Protocol::from_id("anthropic-messages"), Protocol::AnthropicMessages);
-        assert_eq!(Protocol::from_id("something-else"), Protocol::OpenAiResponses);
+        assert_eq!(
+            Protocol::from_id("openai-responses"),
+            Protocol::OpenAiResponses
+        );
+        assert_eq!(
+            Protocol::from_id("openai-completions"),
+            Protocol::OpenAiCompletions
+        );
+        assert_eq!(
+            Protocol::from_id("anthropic-messages"),
+            Protocol::AnthropicMessages
+        );
+        assert_eq!(
+            Protocol::from_id("something-else"),
+            Protocol::OpenAiResponses
+        );
         assert_eq!(Protocol::OpenAiCompletions.path(), "/chat/completions");
     }
 
@@ -711,13 +828,21 @@ mod tests {
         assert_eq!(u.cache_read_tokens, Some(37940));
         assert_eq!(u.cache_write_tokens, None);
         // 非终局事件不出用量
-        assert!(extract_usage(Protocol::OpenAiResponses, &json!({"type": "response.output_text.delta"})).is_none());
+        assert!(extract_usage(
+            Protocol::OpenAiResponses,
+            &json!({"type": "response.output_text.delta"})
+        )
+        .is_none());
     }
 
     #[test]
     fn extracts_usage_completions_final_chunk() {
         // 中途 chunk 的 usage 为 null(include_usage 模式),不许当成零
-        assert!(extract_usage(Protocol::OpenAiCompletions, &json!({"choices": [], "usage": null})).is_none());
+        assert!(extract_usage(
+            Protocol::OpenAiCompletions,
+            &json!({"choices": [], "usage": null})
+        )
+        .is_none());
         let ev = json!({ "choices": [], "usage": {
             "prompt_tokens": 100, "completion_tokens": 20,
             "prompt_tokens_details": { "cached_tokens": 80 }
@@ -774,7 +899,10 @@ mod tests {
         let err: Value =
             serde_json::from_str(r#"{"error":{"message":"model not found","type":"invalid"}}"#)
                 .unwrap();
-        assert_eq!(extract_deltas(p, &err), vec![Delta::Err("model not found".into())]);
+        assert_eq!(
+            extract_deltas(p, &err),
+            vec![Delta::Err("model not found".into())]
+        );
     }
 
     #[test]
@@ -789,7 +917,10 @@ mod tests {
             r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
         )
         .unwrap();
-        assert_eq!(extract_deltas(p, &err), vec![Delta::Err("Overloaded".into())]);
+        assert_eq!(
+            extract_deltas(p, &err),
+            vec![Delta::Err("Overloaded".into())]
+        );
         let other: Value =
             serde_json::from_str(r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#)
                 .unwrap();
@@ -808,7 +939,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             extract_deltas(p, &first),
-            vec![Delta::ToolCallStart { index: 0, id: "call_abc".into(), name: "search".into() }]
+            vec![Delta::ToolCallStart {
+                index: 0,
+                id: "call_abc".into(),
+                name: "search".into()
+            }]
         );
         // 后续片:只有 arguments 分片
         let frag: Value = serde_json::from_str(
@@ -817,7 +952,10 @@ mod tests {
         .unwrap();
         assert_eq!(
             extract_deltas(p, &frag),
-            vec![Delta::ToolCallArgs { index: 0, args: "{\"qu".into() }]
+            vec![Delta::ToolCallArgs {
+                index: 0,
+                args: "{\"qu".into()
+            }]
         );
         // 首片同时带参数分片 → Start + Args 两个增量
         let both: Value = serde_json::from_str(
@@ -827,8 +965,15 @@ mod tests {
         assert_eq!(
             extract_deltas(p, &both),
             vec![
-                Delta::ToolCallStart { index: 1, id: "call_x".into(), name: "search".into() },
-                Delta::ToolCallArgs { index: 1, args: "{".into() },
+                Delta::ToolCallStart {
+                    index: 1,
+                    id: "call_x".into(),
+                    name: "search".into()
+                },
+                Delta::ToolCallArgs {
+                    index: 1,
+                    args: "{".into()
+                },
             ]
         );
     }
@@ -843,7 +988,11 @@ mod tests {
         // call_id 优先于 item.id(回传 function_call_output 认 call_id)
         assert_eq!(
             extract_deltas(p, &added),
-            vec![Delta::ToolCallStart { index: 0, id: "call_r1".into(), name: "search".into() }]
+            vec![Delta::ToolCallStart {
+                index: 0,
+                id: "call_r1".into(),
+                name: "search".into()
+            }]
         );
         let frag: Value = serde_json::from_str(
             r#"{"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"query\":"}"#,
@@ -851,7 +1000,10 @@ mod tests {
         .unwrap();
         assert_eq!(
             extract_deltas(p, &frag),
-            vec![Delta::ToolCallArgs { index: 0, args: "{\"query\":".into() }]
+            vec![Delta::ToolCallArgs {
+                index: 0,
+                args: "{\"query\":".into()
+            }]
         );
         let done: Value = serde_json::from_str(
             r#"{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"call_r1","name":"search","arguments":"{\"query\":\"No Priors\"}"}}"#,
@@ -883,7 +1035,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             extract_deltas(p, &start),
-            vec![Delta::ToolCallStart { index: 1, id: "toolu_1".into(), name: "search".into() }]
+            vec![Delta::ToolCallStart {
+                index: 1,
+                id: "toolu_1".into(),
+                name: "search".into()
+            }]
         );
         let frag: Value = serde_json::from_str(
             r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query\""}}"#,
@@ -891,7 +1047,10 @@ mod tests {
         .unwrap();
         assert_eq!(
             extract_deltas(p, &frag),
-            vec![Delta::ToolCallArgs { index: 1, args: "{\"query\"".into() }]
+            vec![Delta::ToolCallArgs {
+                index: 1,
+                args: "{\"query\"".into()
+            }]
         );
         // 文本块的 start 不产工具增量
         let text_start: Value = serde_json::from_str(
@@ -907,12 +1066,29 @@ mod tests {
     fn step_accum_assembles_fragments() {
         let mut acc = StepAccum::default();
         assert_eq!(acc.push(Delta::Text("查证".into())), Some("查证".into()));
-        acc.push(Delta::ToolCallStart { index: 0, id: "c1".into(), name: "search".into() });
-        acc.push(Delta::ToolCallArgs { index: 0, args: "{\"query\":\"No".into() });
-        acc.push(Delta::ToolCallArgs { index: 0, args: " Priors\"}".into() });
+        acc.push(Delta::ToolCallStart {
+            index: 0,
+            id: "c1".into(),
+            name: "search".into(),
+        });
+        acc.push(Delta::ToolCallArgs {
+            index: 0,
+            args: "{\"query\":\"No".into(),
+        });
+        acc.push(Delta::ToolCallArgs {
+            index: 0,
+            args: " Priors\"}".into(),
+        });
         // 第二个调用乱序到达也按 index 归位
-        acc.push(Delta::ToolCallStart { index: 1, id: "c2".into(), name: "search".into() });
-        acc.push(Delta::ToolCallArgs { index: 1, args: "{}".into() });
+        acc.push(Delta::ToolCallStart {
+            index: 1,
+            id: "c2".into(),
+            name: "search".into(),
+        });
+        acc.push(Delta::ToolCallArgs {
+            index: 1,
+            args: "{}".into(),
+        });
         let out = acc.finish().unwrap();
         assert_eq!(out.text, "查证");
         assert_eq!(out.tool_calls.len(), 2);
@@ -924,8 +1100,15 @@ mod tests {
     #[test]
     fn step_accum_done_overwrites_and_drops_nameless() {
         let mut acc = StepAccum::default();
-        acc.push(Delta::ToolCallStart { index: 0, id: "c1".into(), name: "search".into() });
-        acc.push(Delta::ToolCallArgs { index: 0, args: "{\"partial".into() });
+        acc.push(Delta::ToolCallStart {
+            index: 0,
+            id: "c1".into(),
+            name: "search".into(),
+        });
+        acc.push(Delta::ToolCallArgs {
+            index: 0,
+            args: "{\"partial".into(),
+        });
         // done 权威覆盖分片
         acc.push(Delta::ToolCallDone {
             index: 0,
@@ -934,7 +1117,10 @@ mod tests {
             args: "{\"query\":\"ok\"}".into(),
         });
         // 无名残片(只有 args 没等到 Start)丢弃
-        acc.push(Delta::ToolCallArgs { index: 9, args: "{}".into() });
+        acc.push(Delta::ToolCallArgs {
+            index: 9,
+            args: "{}".into(),
+        });
         let out = acc.finish().unwrap();
         assert_eq!(out.tool_calls.len(), 1);
         assert_eq!(out.tool_calls[0].arguments, "{\"query\":\"ok\"}");
@@ -962,7 +1148,10 @@ mod tests {
                     arguments: "{\"query\":\"No Priors\"}".into(),
                 }],
             },
-            AgentMsg::ToolResults(vec![ToolResult { call_id: "c1".into(), content: "命中若干".into() }]),
+            AgentMsg::ToolResults(vec![ToolResult {
+                call_id: "c1".into(),
+                content: "命中若干".into(),
+            }]),
         ];
         let tools = vec![ToolDef {
             name: "search".into(),
@@ -985,13 +1174,20 @@ mod tests {
         assert_eq!(b["messages"][0]["role"], "system");
         assert_eq!(b["messages"][2]["role"], "assistant");
         assert_eq!(b["messages"][2]["tool_calls"][0]["id"], "c1");
-        assert_eq!(b["messages"][2]["tool_calls"][0]["function"]["arguments"], "{\"query\":\"No Priors\"}");
+        assert_eq!(
+            b["messages"][2]["tool_calls"][0]["function"]["arguments"],
+            "{\"query\":\"No Priors\"}"
+        );
         assert_eq!(b["messages"][3]["role"], "tool");
         assert_eq!(b["messages"][3]["tool_call_id"], "c1");
         // 纯工具轮 content 为 null
         let pure = vec![AgentMsg::Assistant {
             text: String::new(),
-            tool_calls: vec![ToolCall { id: "c".into(), name: "search".into(), arguments: "{}".into() }],
+            tool_calls: vec![ToolCall {
+                id: "c".into(),
+                name: "search".into(),
+                arguments: "{}".into(),
+            }],
         }];
         let b2 = request_body_tools(Protocol::OpenAiCompletions, "m1", "sys", &pure, &tools);
         assert!(b2["messages"][1]["content"].is_null());
@@ -1020,7 +1216,10 @@ mod tests {
         // assistant = text 块 + tool_use 块(input 已解析为对象)
         assert_eq!(b["messages"][1]["content"][0]["type"], "text");
         assert_eq!(b["messages"][1]["content"][1]["type"], "tool_use");
-        assert_eq!(b["messages"][1]["content"][1]["input"]["query"], "No Priors");
+        assert_eq!(
+            b["messages"][1]["content"][1]["input"]["query"],
+            "No Priors"
+        );
         // 工具结果放 user 消息的 tool_result 块
         assert_eq!(b["messages"][2]["role"], "user");
         assert_eq!(b["messages"][2]["content"][0]["type"], "tool_result");
@@ -1030,7 +1229,11 @@ mod tests {
     #[test]
     fn tools_omitted_when_empty() {
         let msgs = vec![agent_user("你好")];
-        for p in [Protocol::OpenAiResponses, Protocol::OpenAiCompletions, Protocol::AnthropicMessages] {
+        for p in [
+            Protocol::OpenAiResponses,
+            Protocol::OpenAiCompletions,
+            Protocol::AnthropicMessages,
+        ] {
             let b = request_body_tools(p, "m1", "sys", &msgs, &[]);
             assert!(b.get("tools").is_none());
         }

@@ -54,10 +54,7 @@ pub fn parse_episode_html(url: &str, html: &str) -> Result<EpisodeMeta> {
         .and_then(|c| serde_json::from_str::<serde_json::Value>(c.get(1).unwrap().as_str()).ok())
         .and_then(|next| {
             let props = next.pointer("/props/pageProps")?.clone();
-            props
-                .get("episode")
-                .or_else(|| props.get("data"))
-                .cloned()
+            props.get("episode").or_else(|| props.get("data")).cloned()
         });
 
     // 音频地址:og:audio → __NEXT_DATA__ enclosure/media → 裸 CDN 链接兜底
@@ -174,8 +171,16 @@ pub fn parse_podcast_html(pid: &str, html: &str) -> Result<PodcastFeed> {
         .filter_map(|e| {
             Some(FeedEpisode {
                 eid: e.get("eid")?.as_str()?.to_string(),
-                title: e.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                pub_date: e.get("pubDate").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                title: e
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                pub_date: e
+                    .get("pubDate")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 duration: e.get("duration").and_then(|v| v.as_u64()),
                 playable: e
                     .pointer("/enclosure/url")
@@ -185,7 +190,11 @@ pub fn parse_podcast_html(pid: &str, html: &str) -> Result<PodcastFeed> {
             })
         })
         .collect();
-    Ok(PodcastFeed { pid: pid.to_string(), title, episodes })
+    Ok(PodcastFeed {
+        pid: pid.to_string(),
+        title,
+        episodes,
+    })
 }
 
 /// 节目页 URL → pid

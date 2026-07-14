@@ -49,14 +49,35 @@ pub struct Hit {
 
 /// 核查过程事件——Channel 载荷,serde 形状即前端合同,勿随意改字段名
 #[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum AgentEvent {
-    Round { n: usize },
-    TextDelta { text: String },
-    ToolCall { call_id: String, name: String, args: Value },
-    ToolResult { call_id: String, ok: bool, hits: Vec<Hit>, message: String },
-    Final { items: Vec<Suggestion> },
-    Error { message: String },
+    Round {
+        n: usize,
+    },
+    TextDelta {
+        text: String,
+    },
+    ToolCall {
+        call_id: String,
+        name: String,
+        args: Value,
+    },
+    ToolResult {
+        call_id: String,
+        ok: bool,
+        hits: Vec<Hit>,
+        message: String,
+    },
+    Final {
+        items: Vec<Suggestion>,
+    },
+    Error {
+        message: String,
+    },
 }
 
 /// 拼 user prompt:节目名 + 编号分块(带 ts/who 元数据供 LLM 定位语境)
@@ -66,8 +87,10 @@ fn render_prompt(podcast: &str, blocks: &[BlockInput]) -> String {
         .enumerate()
         .map(|(i, b)| {
             let mut head = format!("【分块 {}】", i + 1);
-            let meta: Vec<&str> =
-                [b.ts.as_str(), b.who.as_str()].into_iter().filter(|s| !s.is_empty()).collect();
+            let meta: Vec<&str> = [b.ts.as_str(), b.who.as_str()]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect();
             if !meta.is_empty() {
                 head.push_str(&format!("({})", meta.join(" · ")));
             }
@@ -75,13 +98,16 @@ fn render_prompt(podcast: &str, blocks: &[BlockInput]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n\n");
-    BLOCKS_PROMPT.replace("{{podcast}}", podcast).replace("{{blocks}}", &rendered)
+    BLOCKS_PROMPT
+        .replace("{{podcast}}", podcast)
+        .replace("{{blocks}}", &rendered)
 }
 
 fn search_tool() -> ToolDef {
     ToolDef {
         name: "search".into(),
-        description: "网络搜索,用于查证专有名词的真实写法。返回若干条搜索结果(标题/链接/摘要)。".into(),
+        description: "网络搜索,用于查证专有名词的真实写法。返回若干条搜索结果(标题/链接/摘要)。"
+            .into(),
         parameters: json!({
             "type": "object",
             "properties": { "query": { "type": "string", "description": "搜索查询词" } },
@@ -94,7 +120,12 @@ fn search_tool() -> ToolDef {
 fn parse_query(arguments: &str) -> Result<String> {
     let v: Value = serde_json::from_str(arguments.trim())
         .map_err(|_| anyhow::anyhow!("参数不是合法 JSON: {arguments}"))?;
-    match v.get("query").and_then(|q| q.as_str()).map(str::trim).filter(|q| !q.is_empty()) {
+    match v
+        .get("query")
+        .and_then(|q| q.as_str())
+        .map(str::trim)
+        .filter(|q| !q.is_empty())
+    {
         Some(q) => Ok(q.to_string()),
         None => bail!("参数里没有 query 字段"),
     }
@@ -176,7 +207,9 @@ pub async fn research_blocks(
         // 末轮收走工具,逼终局
         let last = round == MAX_ROUNDS;
         if last {
-            msgs.push(agent_user("不要再调用工具,直接根据已有证据输出终局 JSON 数组。"));
+            msgs.push(agent_user(
+                "不要再调用工具,直接根据已有证据输出终局 JSON 数组。",
+            ));
         }
         let step = llm::stream_step(
             client,
@@ -194,11 +227,16 @@ pub async fn research_blocks(
             match parse_suggestions(&step.text) {
                 Some(items) => {
                     let items = sanitize(items);
-                    on_event(AgentEvent::Final { items: items.clone() });
+                    on_event(AgentEvent::Final {
+                        items: items.clone(),
+                    });
                     return Ok(items);
                 }
                 None => {
-                    msgs.push(AgentMsg::Assistant { text: step.text, tool_calls: vec![] });
+                    msgs.push(AgentMsg::Assistant {
+                        text: step.text,
+                        tool_calls: vec![],
+                    });
                     msgs.push(agent_user(
                         "你输出的不是合法 JSON 数组。请只输出一个合法 JSON 数组,不要任何其他文字。",
                     ));
@@ -215,18 +253,31 @@ pub async fn research_blocks(
                 c.id = format!("call_{round}_{call_seq}");
             }
         }
-        msgs.push(AgentMsg::Assistant { text: step.text, tool_calls: calls.clone() });
+        msgs.push(AgentMsg::Assistant {
+            text: step.text,
+            tool_calls: calls.clone(),
+        });
 
         let mut results = Vec::new();
         for c in &calls {
             if cancel.load(Ordering::Relaxed) {
                 bail!("已取消");
             }
-            let args: Value = serde_json::from_str(&c.arguments).unwrap_or_else(|_| json!({ "raw": c.arguments }));
-            on_event(AgentEvent::ToolCall { call_id: c.id.clone(), name: c.name.clone(), args });
+            let args: Value = serde_json::from_str(&c.arguments)
+                .unwrap_or_else(|_| json!({ "raw": c.arguments }));
+            on_event(AgentEvent::ToolCall {
+                call_id: c.id.clone(),
+                name: c.name.clone(),
+                args,
+            });
             // 工具执行失败不中断:错误文本回填给 LLM 自行调整
             let (content, ok, hits, message) = if c.name != "search" {
-                (format!("未知工具: {}", c.name), false, vec![], format!("未知工具: {}", c.name))
+                (
+                    format!("未知工具: {}", c.name),
+                    false,
+                    vec![],
+                    format!("未知工具: {}", c.name),
+                )
             } else {
                 match parse_query(&c.arguments) {
                     Err(e) => (format!("搜索失败: {e}"), false, vec![], e.to_string()),
@@ -245,7 +296,10 @@ pub async fn research_blocks(
                 hits,
                 message,
             });
-            results.push(llm::ToolResult { call_id: c.id.clone(), content });
+            results.push(llm::ToolResult {
+                call_id: c.id.clone(),
+                content,
+            });
         }
         msgs.push(AgentMsg::ToolResults(results));
     }
@@ -258,7 +312,10 @@ mod tests {
 
     #[test]
     fn query_parses_and_rejects() {
-        assert_eq!(parse_query(r#"{"query":" No Priors "}"#).unwrap(), "No Priors");
+        assert_eq!(
+            parse_query(r#"{"query":" No Priors "}"#).unwrap(),
+            "No Priors"
+        );
         assert!(parse_query("不是 json").is_err());
         assert!(parse_query(r#"{"q":"x"}"#).is_err());
         assert!(parse_query(r#"{"query":""}"#).is_err());
@@ -313,8 +370,16 @@ mod tests {
         let p = render_prompt(
             "乱翻书",
             &[
-                BlockInput { text: "第一块".into(), who: "施骅伦".into(), ts: "01:10:41".into() },
-                BlockInput { text: "第二块".into(), who: String::new(), ts: String::new() },
+                BlockInput {
+                    text: "第一块".into(),
+                    who: "施骅伦".into(),
+                    ts: "01:10:41".into(),
+                },
+                BlockInput {
+                    text: "第二块".into(),
+                    who: String::new(),
+                    ts: String::new(),
+                },
             ],
         );
         assert!(p.contains("节目: 乱翻书"));
@@ -345,6 +410,9 @@ mod tests {
         let v = serde_json::to_value(&fin).unwrap();
         assert_eq!(v["type"], "final");
         assert_eq!(v["items"][0]["evidenceUrl"], "https://x");
-        assert_eq!(serde_json::to_value(AgentEvent::TextDelta { text: "x".into() }).unwrap()["type"], "textDelta");
+        assert_eq!(
+            serde_json::to_value(AgentEvent::TextDelta { text: "x".into() }).unwrap()["type"],
+            "textDelta"
+        );
     }
 }

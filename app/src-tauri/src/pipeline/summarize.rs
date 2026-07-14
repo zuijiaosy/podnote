@@ -21,9 +21,20 @@ pub fn build_prompt(meta: &EpisodeMeta, timed_text: &str, glossary: &str) -> Str
         .replace("{{podcast}}", &meta.podcast)
         .replace(
             "{{shownotes}}",
-            if meta.shownotes.is_empty() { "(无)" } else { &meta.shownotes },
+            if meta.shownotes.is_empty() {
+                "(无)"
+            } else {
+                &meta.shownotes
+            },
         )
-        .replace("{{glossary}}", if glossary.is_empty() { "(无)" } else { glossary })
+        .replace(
+            "{{glossary}}",
+            if glossary.is_empty() {
+                "(无)"
+            } else {
+                glossary
+            },
+        )
         .replace("{{transcript}}", timed_text)
 }
 
@@ -64,8 +75,14 @@ async fn run_once(
         let n = chars.fetch_add(d.chars().count(), Ordering::Relaxed) + d.chars().count();
         progress(n);
     };
-    let out =
-        llm::stream_chat(client, cfg, SYSTEM_PROMPT, &[user_message(prompt)], &on_delta).await?;
+    let out = llm::stream_chat(
+        client,
+        cfg,
+        SYSTEM_PROMPT,
+        &[user_message(prompt)],
+        &on_delta,
+    )
+    .await?;
     parse_note(&out).map_err(to_anyhow)
 }
 
@@ -76,9 +93,13 @@ mod tests {
     #[test]
     fn prompt_template_has_placeholders_filled() {
         let meta = EpisodeMeta {
-            url: "u".into(), audio_url: "a".into(),
-            title: "标题X".into(), podcast: "节目Y".into(),
-            shownotes: String::new(), duration: None, pub_date: None,
+            url: "u".into(),
+            audio_url: "a".into(),
+            title: "标题X".into(),
+            podcast: "节目Y".into(),
+            shownotes: String::new(),
+            duration: None,
+            pub_date: None,
         };
         let p = build_prompt(&meta, "[00:01] S1: 你好", "");
         assert!(p.contains("标题X"));
@@ -91,9 +112,13 @@ mod tests {
     #[test]
     fn prompt_injects_glossary() {
         let meta = EpisodeMeta {
-            url: "u".into(), audio_url: "a".into(),
-            title: "T".into(), podcast: "P".into(),
-            shownotes: String::new(), duration: None, pub_date: None,
+            url: "u".into(),
+            audio_url: "a".into(),
+            title: "T".into(),
+            podcast: "P".into(),
+            shownotes: String::new(),
+            duration: None,
+            pub_date: None,
         };
         let p = build_prompt(&meta, "x", "面筋 → 面基\nNo Players → No Priors");
         assert!(p.contains("面筋 → 面基"));

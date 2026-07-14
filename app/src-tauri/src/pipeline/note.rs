@@ -65,9 +65,16 @@ impl std::error::Error for ParseError {}
 
 /// 容忍代码围栏与前后杂讯:取首个 { 到末个 } 之间解析
 pub fn parse_note(raw: &str) -> Result<Note, ParseError> {
-    let err = |message: String| ParseError { message, raw: raw.to_string() };
-    let start = raw.find('{').ok_or_else(|| err("LLM 输出里没找到 JSON 对象".into()))?;
-    let end = raw.rfind('}').filter(|&e| e > start)
+    let err = |message: String| ParseError {
+        message,
+        raw: raw.to_string(),
+    };
+    let start = raw
+        .find('{')
+        .ok_or_else(|| err("LLM 输出里没找到 JSON 对象".into()))?;
+    let end = raw
+        .rfind('}')
+        .filter(|&e| e > start)
         .ok_or_else(|| err("LLM 输出里没找到 JSON 对象".into()))?;
     let mut note: Note = serde_json::from_str(&raw[start..=end])
         .map_err(|e| err(format!("笔记 JSON 解析失败: {e}")))?;
@@ -94,7 +101,11 @@ pub fn note_to_markdown_opts(meta: &EpisodeMeta, note: &Note, wikilinks: bool) -
     l.push("## 核心观点".into());
     l.push(String::new());
     for p in &note.points {
-        let who = p.who.as_deref().map(|w| format!(" · {w}")).unwrap_or_default();
+        let who = p
+            .who
+            .as_deref()
+            .map(|w| format!(" · {w}"))
+            .unwrap_or_default();
         l.push(format!("### {}{} ({})", p.h, who, p.ts));
         l.push(String::new());
         l.push(p.body.clone());
@@ -103,7 +114,11 @@ pub fn note_to_markdown_opts(meta: &EpisodeMeta, note: &Note, wikilinks: bool) -
     l.push("## 值得记住的话".into());
     l.push(String::new());
     for q in &note.quotes {
-        let who = q.who.as_deref().map(|w| format!("—— {w} ")).unwrap_or_default();
+        let who = q
+            .who
+            .as_deref()
+            .map(|w| format!("—— {w} "))
+            .unwrap_or_default();
         l.push(format!("> 「{}」{}({})", q.text, who, q.ts));
         l.push(String::new());
     }
@@ -256,7 +271,11 @@ mod tests {
 
     #[test]
     fn replace_in_ascii_respects_word_boundary() {
-        let (s, n) = replace_in("听 No Players 和 No Playersx 的节目", "No Players", "No Priors");
+        let (s, n) = replace_in(
+            "听 No Players 和 No Playersx 的节目",
+            "No Players",
+            "No Priors",
+        );
         assert_eq!(n, 1);
         assert_eq!(s, "听 No Priors 和 No Playersx 的节目");
     }
@@ -273,11 +292,27 @@ mod tests {
     #[test]
     fn replace_term_walks_all_fields_and_is_idempotent() {
         let mut note = Note {
-            speakers: [("S1".to_string(), "面筋".to_string())].into_iter().collect(),
+            speakers: [("S1".to_string(), "面筋".to_string())]
+                .into_iter()
+                .collect(),
             tldr: "面筋这期讲面筋".into(),
-            points: vec![Point { ts: "01:00".into(), t: 60, who: Some("面筋".into()), h: "标题".into(), body: "嘉宾提到面筋".into() }],
-            quotes: vec![Quote { ts: "02:00".into(), t: 120, who: None, text: "面筋说的话".into() }],
-            resources: vec![Resource { name: "面筋日谈".into(), note: "无关".into() }],
+            points: vec![Point {
+                ts: "01:00".into(),
+                t: 60,
+                who: Some("面筋".into()),
+                h: "标题".into(),
+                body: "嘉宾提到面筋".into(),
+            }],
+            quotes: vec![Quote {
+                ts: "02:00".into(),
+                t: 120,
+                who: None,
+                text: "面筋说的话".into(),
+            }],
+            resources: vec![Resource {
+                name: "面筋日谈".into(),
+                note: "无关".into(),
+            }],
             questions: vec!["面筋是谁?".into()],
         };
         let n = replace_term(&mut note, "面筋", "面基");
@@ -294,9 +329,13 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
         let note = parse_note(&serde_json::to_string(&v["note"]).unwrap()).unwrap();
         let meta = EpisodeMeta {
-            url: "https://x".into(), audio_url: String::new(),
-            title: "T".into(), podcast: "P".into(),
-            shownotes: String::new(), duration: Some(100), pub_date: None,
+            url: "https://x".into(),
+            audio_url: String::new(),
+            title: "T".into(),
+            podcast: "P".into(),
+            shownotes: String::new(),
+            duration: Some(100),
+            pub_date: None,
         };
         let md = note_to_markdown(&meta, &note);
         assert!(md.contains("# T"));

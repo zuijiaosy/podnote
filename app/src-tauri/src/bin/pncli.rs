@@ -99,7 +99,11 @@ async fn cmd_tts(path: Option<&String>, voice: Option<&String>) -> Result<()> {
             t0.elapsed().as_secs_f64()
         );
     }
-    println!("✅ {} 段完成,总耗时 {:.1}s", segs.len(), started.elapsed().as_secs_f64());
+    println!(
+        "✅ {} 段完成,总耗时 {:.1}s",
+        segs.len(),
+        started.elapsed().as_secs_f64()
+    );
     Ok(())
 }
 
@@ -115,7 +119,8 @@ async fn cmd_vocab(arg: Option<&String>) -> Result<()> {
     println!("节目: {} — {}", meta.podcast, meta.title);
     println!("shownotes {} 字", meta.shownotes.chars().count());
     let llm = llm_from_env();
-    let entities = vocab::extract_entities(&client, &llm, &meta.podcast, &meta.title, &meta.shownotes).await;
+    let entities =
+        vocab::extract_entities(&client, &llm, &meta.podcast, &meta.title, &meta.shownotes).await;
     println!("提取实体 {} 个: {entities:?}", entities.len());
     let terms = vocab::build_terms(entities, &[]);
     if terms.is_empty() {
@@ -132,7 +137,9 @@ async fn cmd_vocab(arg: Option<&String>) -> Result<()> {
 
 /// pncli research <词> "<上下文>" [节目名] — 冒烟整条查证链(需 TAVILY_API_KEY)
 async fn cmd_research(args: &[String]) -> Result<()> {
-    let term = args.first().context("用法: pncli research <词> \"<上下文>\" [节目名]")?;
+    let term = args
+        .first()
+        .context("用法: pncli research <词> \"<上下文>\" [节目名]")?;
     let context = args.get(1).cloned().unwrap_or_default();
     let podcast = args.get(2).cloned().unwrap_or_default();
     let tavily_key = std::env::var("TAVILY_API_KEY").context("需要 TAVILY_API_KEY")?;
@@ -157,16 +164,29 @@ async fn cmd_research_blocks(args: &[String]) -> Result<()> {
     let doc: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
     let note_obj = doc.get("note").unwrap_or(&doc);
     let podcast = args.get(2).cloned().unwrap_or_else(|| {
-        doc.pointer("/meta/podcast").and_then(|v| v.as_str()).unwrap_or("").to_string()
+        doc.pointer("/meta/podcast")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
     });
     // 块选择:tldr 或 points 的 1 起序号(与阅读井里的块一一对应)
     let mut blocks = Vec::new();
     for tok in picks.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         if tok == "tldr" {
-            let text = note_obj.get("tldr").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            blocks.push(agent::BlockInput { text, who: String::new(), ts: String::new() });
+            let text = note_obj
+                .get("tldr")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            blocks.push(agent::BlockInput {
+                text,
+                who: String::new(),
+                ts: String::new(),
+            });
         } else {
-            let i: usize = tok.parse().with_context(|| format!("块序号不合法: {tok}"))?;
+            let i: usize = tok
+                .parse()
+                .with_context(|| format!("块序号不合法: {tok}"))?;
             let p = note_obj
                 .pointer(&format!("/points/{}", i.saturating_sub(1)))
                 .with_context(|| format!("没有第 {i} 个 point"))?;
@@ -186,11 +206,23 @@ async fn cmd_research_blocks(args: &[String]) -> Result<()> {
     let client = reqwest::Client::new();
     let cancel = std::sync::atomic::AtomicBool::new(false);
     let started = std::time::Instant::now();
-    let items = agent::research_blocks(&client, &llm, &tavily_key, &podcast, &blocks, &cancel, &|ev| {
-        println!("{}", serde_json::to_string(&ev).unwrap_or_default());
-    })
+    let items = agent::research_blocks(
+        &client,
+        &llm,
+        &tavily_key,
+        &podcast,
+        &blocks,
+        &cancel,
+        &|ev| {
+            println!("{}", serde_json::to_string(&ev).unwrap_or_default());
+        },
+    )
     .await?;
-    eprintln!("✅ {} 条建议,耗时 {:.1}s", items.len(), started.elapsed().as_secs_f64());
+    eprintln!(
+        "✅ {} 条建议,耗时 {:.1}s",
+        items.len(),
+        started.elapsed().as_secs_f64()
+    );
     Ok(())
 }
 
@@ -201,21 +233,37 @@ fn cmd_correct(args: &[String]) -> Result<()> {
         _ => bail!("用法: pncli correct <note.json> <原词> <正词>"),
     };
     let doc: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
-    let mut n: note::Note = serde_json::from_value(doc.get("note").cloned().unwrap_or(doc.clone()))?;
+    let mut n: note::Note =
+        serde_json::from_value(doc.get("note").cloned().unwrap_or(doc.clone()))?;
     let count = note::replace_term(&mut n, original, corrected);
     println!("笔记替换 {count} 处");
     let meta = resolve::EpisodeMeta {
-        url: doc.pointer("/meta/url").and_then(|v| v.as_str()).unwrap_or("").into(),
+        url: doc
+            .pointer("/meta/url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .into(),
         audio_url: String::new(),
-        title: doc.pointer("/meta/title").and_then(|v| v.as_str()).unwrap_or("无标题").into(),
-        podcast: doc.pointer("/meta/podcast").and_then(|v| v.as_str()).unwrap_or("").into(),
+        title: doc
+            .pointer("/meta/title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("无标题")
+            .into(),
+        podcast: doc
+            .pointer("/meta/podcast")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .into(),
         shownotes: String::new(),
         duration: doc.pointer("/meta/durationSec").and_then(|v| v.as_u64()),
         pub_date: None,
     };
     let out_json = format!("{path}.corrected.json");
     let out_md = format!("{path}.corrected.md");
-    fs::write(&out_json, serde_json::to_string_pretty(&serde_json::json!({ "meta": doc.get("meta"), "note": n }))?)?;
+    fs::write(
+        &out_json,
+        serde_json::to_string_pretty(&serde_json::json!({ "meta": doc.get("meta"), "note": n }))?,
+    )?;
     fs::write(&out_md, note::note_to_markdown(&meta, &n))?;
     println!("✅ 副本已写入: {out_json}\n           {out_md}");
     Ok(())
@@ -255,9 +303,16 @@ async fn main() -> Result<()> {
     } else {
         let host = std::env::var("BAILIAN_HOST").unwrap_or_else(|_| asr::DEFAULT_HOST.into());
         let vocab_id = std::env::var("PN_VOCAB_ID").ok(); // 可选:已有词表 id 直接挂上
-        let r = asr::transcribe(&client, &host, &asr_key, &meta.audio_url, vocab_id.as_deref(), &|st, extra| {
-            println!("[asr] {st} {extra}");
-        })
+        let r = asr::transcribe(
+            &client,
+            &host,
+            &asr_key,
+            &meta.audio_url,
+            vocab_id.as_deref(),
+            &|st, extra| {
+                println!("[asr] {st} {extra}");
+            },
+        )
         .await?;
         fs::write(&asr_path, serde_json::to_string(&r)?)?;
         println!("[asr] 转写结果已缓存: {asr_path}");

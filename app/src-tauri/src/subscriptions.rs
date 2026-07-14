@@ -34,8 +34,7 @@ impl SubStore {
     }
 
     fn save_all(&self, subs: &[Subscription]) -> Result<()> {
-        fs::write(self.path(), serde_json::to_string_pretty(subs)?)
-            .context("写入订阅登记表失败")
+        fs::write(self.path(), serde_json::to_string_pretty(subs)?).context("写入订阅登记表失败")
     }
 
     /// 新增追加到末尾;已存在则原位更新
@@ -115,10 +114,16 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let store = SubStore { root: dir.clone() };
         store
-            .upsert(Subscription { pid: "p1".into(), title: "节目".into(), last_pub: "".into() })
+            .upsert(Subscription {
+                pid: "p1".into(),
+                title: "节目".into(),
+                last_pub: "".into(),
+            })
             .unwrap();
         assert_eq!(store.list().len(), 1);
-        store.set_last_pub("p1", "2026-07-09T10:00:00.000Z").unwrap();
+        store
+            .set_last_pub("p1", "2026-07-09T10:00:00.000Z")
+            .unwrap();
         assert_eq!(store.list()[0].last_pub, "2026-07-09T10:00:00.000Z");
         store.remove("p1").unwrap();
         assert!(store.list().is_empty());

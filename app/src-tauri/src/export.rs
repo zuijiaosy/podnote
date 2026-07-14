@@ -80,7 +80,10 @@ fn is_reserved_stem(stem: &str) -> bool {
     matches!(up.as_str(), "CON" | "PRN" | "AUX" | "NUL")
         || ((up.starts_with("COM") || up.starts_with("LPT"))
             && up.chars().count() == 4
-            && matches!(up.chars().nth(3), Some('1'..='9') | Some('¹') | Some('²') | Some('³')))
+            && matches!(
+                up.chars().nth(3),
+                Some('1'..='9') | Some('¹') | Some('²') | Some('³')
+            ))
 }
 
 /// 文件名部件净化:去控制字符与跨平台非法字符,去首部点(隐藏文件/..),限长,
@@ -103,14 +106,21 @@ pub fn sanitize_component(name: &str) -> String {
         return "untitled".into();
     }
     let stem = out.split('.').next().unwrap_or(&out);
-    if is_reserved_stem(stem) { format!("_{out}") } else { out }
+    if is_reserved_stem(stem) {
+        format!("_{out}")
+    } else {
+        out
+    }
 }
 
 /// YAML 双引号字符串(frontmatter 用):标题里的冒号/引号/换行不许破坏结构
 fn yaml_str(s: &str) -> String {
     format!(
         "\"{}\"",
-        s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', " ").replace('\r', " ")
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', " ")
+            .replace('\r', " ")
     )
 }
 
@@ -147,7 +157,11 @@ fn pub_date_ymd(meta: &EpisodeMeta) -> Option<String> {
 
 /// 外部导出正文:frontmatter + Markdown(wikilinks 开启时资源名转 [[]])
 pub fn render(meta: &EpisodeMeta, parsed: &Note, wikilinks: bool) -> String {
-    format!("{}{}", frontmatter(meta), note::note_to_markdown_opts(meta, parsed, wikilinks))
+    format!(
+        "{}{}",
+        frontmatter(meta),
+        note::note_to_markdown_opts(meta, parsed, wikilinks)
+    )
 }
 
 /// 冲突副本路径:xxx.md → xxx.podnote-new.md
@@ -182,7 +196,13 @@ fn write_and_record(
     hash: String,
 ) -> Result<Outcome, String> {
     write_atomic(path, content)?;
-    manifest.insert(id.to_string(), Entry { path: path.to_string_lossy().into_owned(), hash });
+    manifest.insert(
+        id.to_string(),
+        Entry {
+            path: path.to_string_lossy().into_owned(),
+            hash,
+        },
+    );
     Ok(Outcome::Written(path.to_path_buf()))
 }
 
@@ -206,9 +226,17 @@ pub fn export_note(
     let mut desired = dir.join(format!("{} {}.md", date, sanitize_component(&meta.title)));
     // 同名占用(别的单集已认领这个路径;macOS 大小写不敏感,按小写比):文件名追加 id 前缀
     let desired_key = desired.to_string_lossy().to_lowercase();
-    if manifest.iter().any(|(k, e)| k != id && e.path.to_lowercase() == desired_key) {
+    if manifest
+        .iter()
+        .any(|(k, e)| k != id && e.path.to_lowercase() == desired_key)
+    {
         let idp: String = id.chars().take(8).collect();
-        desired = dir.join(format!("{} {} [{}].md", date, sanitize_component(&meta.title), idp));
+        desired = dir.join(format!(
+            "{} {} [{}].md",
+            date,
+            sanitize_component(&meta.title),
+            idp
+        ));
     }
 
     let new_hash = fnv1a(content.as_bytes());
@@ -223,7 +251,10 @@ pub fn export_note(
                     // 内容一模一样(如换机重装后重跑):直接认领,不动文件
                     manifest.insert(
                         id.to_string(),
-                        Entry { path: desired.to_string_lossy().into_owned(), hash: new_hash },
+                        Entry {
+                            path: desired.to_string_lossy().into_owned(),
+                            hash: new_hash,
+                        },
                     );
                     Outcome::Written(desired)
                 } else {
@@ -255,7 +286,10 @@ pub fn export_note(
                         if fnv1a(disk.as_bytes()) == new_hash {
                             manifest.insert(
                                 id.to_string(),
-                                Entry { path: desired.to_string_lossy().into_owned(), hash: new_hash },
+                                Entry {
+                                    path: desired.to_string_lossy().into_owned(),
+                                    hash: new_hash,
+                                },
                             );
                             Outcome::Written(desired)
                         } else {
@@ -313,7 +347,10 @@ mod tests {
 
     #[test]
     fn sanitize_strips_illegal_and_truncates() {
-        assert_eq!(sanitize_component("a/b:c*d?e\"f<g>h|i"), "a b c d e f g h i");
+        assert_eq!(
+            sanitize_component("a/b:c*d?e\"f<g>h|i"),
+            "a b c d e f g h i"
+        );
         assert_eq!(sanitize_component("..hidden"), "hidden");
         assert_eq!(sanitize_component("  "), "untitled");
         assert_eq!(sanitize_component(&"长".repeat(100)).chars().count(), 60);
@@ -352,10 +389,20 @@ mod tests {
         fs::create_dir_all(&vault).unwrap();
         let mut m = meta("穿越测试");
         m.pub_date = Some("../../evil".into()); // 恰好十字符的穿越载荷
-        let Outcome::Written(p) = export_note(&lib, &vault.to_string_lossy(), "ep1", &m, "x", false).unwrap()
-        else { panic!() };
-        assert!(p.starts_with(&vault), "产物必须落在导出根之内: {}", p.display());
-        assert!(p.to_string_lossy().contains("undated"), "畸形日期应回落 undated");
+        let Outcome::Written(p) =
+            export_note(&lib, &vault.to_string_lossy(), "ep1", &m, "x", false).unwrap()
+        else {
+            panic!()
+        };
+        assert!(
+            p.starts_with(&vault),
+            "产物必须落在导出根之内: {}",
+            p.display()
+        );
+        assert!(
+            p.to_string_lossy().contains("undated"),
+            "畸形日期应回落 undated"
+        );
         let _ = fs::remove_dir_all(&lib.root);
     }
 
@@ -365,15 +412,21 @@ mod tests {
         let vault = lib.root.join("vault");
         fs::create_dir_all(&vault).unwrap();
         let dir = vault.to_string_lossy().into_owned();
-        let Outcome::Written(p1) = export_note(&lib, &dir, "ep1", &meta("旧名"), "v1", false).unwrap()
-        else { panic!() };
+        let Outcome::Written(p1) =
+            export_note(&lib, &dir, "ep1", &meta("旧名"), "v1", false).unwrap()
+        else {
+            panic!()
+        };
         fs::remove_file(&p1).unwrap(); // 用户删了导出文件
-        // 标题变化后的新目标路径被一份用户自己的文件占着
+                                       // 标题变化后的新目标路径被一份用户自己的文件占着
         let occupied = vault.join("测试节目").join("2026-07-14 新名.md");
         fs::create_dir_all(occupied.parent().unwrap()).unwrap();
         fs::write(&occupied, "用户自己的文件").unwrap();
-        let Outcome::Conflict(cp) = export_note(&lib, &dir, "ep1", &meta("新名"), "v2", true).unwrap()
-        else { panic!("显式重建撞上被占目标必须走冲突,不许覆盖") };
+        let Outcome::Conflict(cp) =
+            export_note(&lib, &dir, "ep1", &meta("新名"), "v2", true).unwrap()
+        else {
+            panic!("显式重建撞上被占目标必须走冲突,不许覆盖")
+        };
         assert_eq!(fs::read_to_string(&occupied).unwrap(), "用户自己的文件");
         assert_eq!(fs::read_to_string(&cp).unwrap(), "v2");
         let _ = fs::remove_dir_all(&lib.root);
@@ -387,17 +440,22 @@ mod tests {
         let dir = vault.to_string_lossy().into_owned();
         let m = meta("副本保护");
 
-        let Outcome::Written(p) = export_note(&lib, &dir, "ep1", &m, "v1", false).unwrap()
-        else { panic!() };
+        let Outcome::Written(p) = export_note(&lib, &dir, "ep1", &m, "v1", false).unwrap() else {
+            panic!()
+        };
         fs::write(&p, "用户改了主文件").unwrap();
         // 第一次冲突:落在 .podnote-new.md
         let Outcome::Conflict(cp1) = export_note(&lib, &dir, "ep1", &m, "v2", false).unwrap()
-        else { panic!() };
+        else {
+            panic!()
+        };
         // 用户又编辑了冲突副本
         fs::write(&cp1, "用户改了冲突副本").unwrap();
         // 第二次冲突:副本被占且内容不同 → 必须另起编号路径,两个现有文件都不许动
         let Outcome::Conflict(cp2) = export_note(&lib, &dir, "ep1", &m, "v3", false).unwrap()
-        else { panic!() };
+        else {
+            panic!()
+        };
         assert_ne!(cp1, cp2);
         assert!(cp2.to_string_lossy().contains("podnote-new-2"));
         assert_eq!(fs::read_to_string(&p).unwrap(), "用户改了主文件");
@@ -405,7 +463,9 @@ mod tests {
         assert_eq!(fs::read_to_string(&cp2).unwrap(), "v3");
         // 同内容重导:复用现有副本,不再新增
         let Outcome::Conflict(cp3) = export_note(&lib, &dir, "ep1", &m, "v3", false).unwrap()
-        else { panic!() };
+        else {
+            panic!()
+        };
         assert_eq!(cp2, cp3);
         let _ = fs::remove_dir_all(&lib.root);
     }
@@ -426,7 +486,9 @@ mod tests {
 
         // 新建自动写
         let out = export_note(&lib, &dir, "ep1", &m, "v1", false).unwrap();
-        let Outcome::Written(p) = out else { panic!("首次导出应是 Written") };
+        let Outcome::Written(p) = out else {
+            panic!("首次导出应是 Written")
+        };
         assert_eq!(fs::read_to_string(&p).unwrap(), "v1");
 
         // 未被改动 → 覆盖更新
@@ -446,7 +508,8 @@ mod tests {
 
         // 用户删了 → 自动导出不重建
         fs::remove_file(&p2).unwrap();
-        let Outcome::MissingOriginal(_) = export_note(&lib, &dir, "ep1", &m, "v4", false).unwrap() else {
+        let Outcome::MissingOriginal(_) = export_note(&lib, &dir, "ep1", &m, "v4", false).unwrap()
+        else {
             panic!("文件消失不许重建")
         };
         assert!(!p2.exists());
@@ -465,10 +528,16 @@ mod tests {
         fs::create_dir_all(&vault).unwrap();
         let dir = vault.to_string_lossy().into_owned();
 
-        let Outcome::Written(p1) = export_note(&lib, &dir, "ep1", &meta("旧标题"), "v1", false).unwrap()
-        else { panic!() };
-        let Outcome::Written(p2) = export_note(&lib, &dir, "ep1", &meta("新标题"), "v2", false).unwrap()
-        else { panic!() };
+        let Outcome::Written(p1) =
+            export_note(&lib, &dir, "ep1", &meta("旧标题"), "v1", false).unwrap()
+        else {
+            panic!()
+        };
+        let Outcome::Written(p2) =
+            export_note(&lib, &dir, "ep1", &meta("新标题"), "v2", false).unwrap()
+        else {
+            panic!()
+        };
         assert!(!p1.exists(), "未被改动的旧文件应迁走");
         assert!(p2.to_string_lossy().contains("新标题"));
         let _ = fs::remove_dir_all(&lib.root);
@@ -481,8 +550,12 @@ mod tests {
         fs::create_dir_all(&vault).unwrap();
         let dir = vault.to_string_lossy().into_owned();
         let m = meta("同名单集");
-        let Outcome::Written(p1) = export_note(&lib, &dir, "ep1", &m, "a", false).unwrap() else { panic!() };
-        let Outcome::Written(p2) = export_note(&lib, &dir, "ep2", &m, "b", false).unwrap() else { panic!() };
+        let Outcome::Written(p1) = export_note(&lib, &dir, "ep1", &m, "a", false).unwrap() else {
+            panic!()
+        };
+        let Outcome::Written(p2) = export_note(&lib, &dir, "ep2", &m, "b", false).unwrap() else {
+            panic!()
+        };
         assert_ne!(p1, p2);
         assert!(p2.to_string_lossy().contains("[ep2]"));
         let _ = fs::remove_dir_all(&lib.root);
