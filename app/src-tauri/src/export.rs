@@ -51,14 +51,19 @@ fn load_manifest(lib: &Library) -> HashMap<String, Entry> {
 }
 
 /// 临时文件 + rename:断电/磁盘满不留半截产物(qa 日志等其他落盘也复用)
+/// Windows 下 rename 到已存在目标同样是替换语义;若目标被杀毒/索引器锁住会失败,
+/// 此时清掉临时文件、把目标路径带进错误信息(显式失败优于伪稳定重试)
 pub fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| format!("非法导出路径: {}", path.display()))?;
     let tmp = path.with_file_name(format!("{file_name}.podnote-tmp"));
-    fs::write(&tmp, content).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, path).map_err(|e| e.to_string())
+    fs::write(&tmp, content).map_err(|e| format!("写入 {} 失败: {e}", tmp.display()))?;
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        format!("落盘 {} 失败: {e}", path.display())
+    })
 }
 
 fn save_manifest(lib: &Library, m: &HashMap<String, Entry>) -> Result<(), String> {
@@ -68,7 +73,18 @@ fn save_manifest(lib: &Library, m: &HashMap<String, Entry>) -> Result<(), String
     )
 }
 
-/// 文件名部件净化:去控制字符与跨平台非法字符,去首部点(隐藏文件/..),限长,空回落
+/// Windows 保留设备名(按第一个 '.' 前的 stem、大小写不敏感判定,CON.txt 同样非法);
+/// 微软还把上标 ¹²³ 变体列为保留,一并处理
+fn is_reserved_stem(stem: &str) -> bool {
+    let up = stem.to_ascii_uppercase();
+    matches!(up.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((up.starts_with("COM") || up.starts_with("LPT"))
+            && up.chars().count() == 4
+            && matches!(up.chars().nth(3), Some('1'..='9') | Some('¹') | Some('²') | Some('³')))
+}
+
+/// 文件名部件净化:去控制字符与跨平台非法字符,去首部点(隐藏文件/..),限长,
+/// 截断后再去尾部点/空格(Windows 非法),保留设备名加 '_' 前缀,空回落
 pub fn sanitize_component(name: &str) -> String {
     let replaced: String = name
         .chars()
@@ -81,8 +97,13 @@ pub fn sanitize_component(name: &str) -> String {
     let joined = replaced.split_whitespace().collect::<Vec<_>>().join(" ");
     let trimmed = joined.trim_start_matches('.').trim();
     let cut: String = trimmed.chars().take(60).collect();
-    let out = cut.trim().to_string();
-    if out.is_empty() { "untitled".into() } else { out }
+    // 截断可能恰好把 '.' 或空格留在末尾,必须在截断之后再清一次
+    let out = cut.trim_end_matches(['.', ' ']).trim().to_string();
+    if out.is_empty() {
+        return "untitled".into();
+    }
+    let stem = out.split('.').next().unwrap_or(&out);
+    if is_reserved_stem(stem) { format!("_{out}") } else { out }
 }
 
 /// YAML 双引号字符串(frontmatter 用):标题里的冒号/引号/换行不许破坏结构
@@ -296,6 +317,27 @@ mod tests {
         assert_eq!(sanitize_component("..hidden"), "hidden");
         assert_eq!(sanitize_component("  "), "untitled");
         assert_eq!(sanitize_component(&"长".repeat(100)).chars().count(), 60);
+    }
+
+    #[test]
+    fn sanitize_windows_trailing_dots_and_reserved_names() {
+        // 尾部点/空格在 Windows 非法,截断后也要再清一次
+        assert_eq!(sanitize_component("foo."), "foo");
+        assert_eq!(sanitize_component("Ep 5. 结尾是点. "), "Ep 5. 结尾是点");
+        let mut long = "x".repeat(59);
+        long.push('.');
+        long.push_str("之后还有");
+        assert_eq!(sanitize_component(&long), "x".repeat(59));
+        // 保留设备名:按第一个 '.' 前的 stem、大小写不敏感,加 '_' 前缀
+        assert_eq!(sanitize_component("CON"), "_CON");
+        assert_eq!(sanitize_component("con.txt"), "_con.txt");
+        assert_eq!(sanitize_component("COM1"), "_COM1");
+        assert_eq!(sanitize_component("Lpt9.md"), "_Lpt9.md");
+        assert_eq!(sanitize_component("COM¹"), "_COM¹");
+        // 正常名不受影响(CONF 不是保留名,COM10 也不是)
+        assert_eq!(sanitize_component("normal.md"), "normal.md");
+        assert_eq!(sanitize_component("CONF"), "CONF");
+        assert_eq!(sanitize_component("COM10"), "COM10");
     }
 
     #[test]

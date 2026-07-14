@@ -1,5 +1,5 @@
 /* Podnote 设计宪法 v2 — TOKENS
-   唯一真源:「Podnote 正式设计 standalone.html」,原样移植,禁止私改 */
+   唯一真源:design/Podnote-standalone.html,原样移植,禁止私改 */
 
 :root {
   /* 色板(锁死,禁止新增颜色) */
@@ -24,8 +24,8 @@
   --status-error: var(--signal);      /* 橙常亮(不呼吸)=需要人 */
 
   /* 字体:等宽=机器 ASCII,无衬线=人话与所有中文 */
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  --font-sans: -apple-system, 'PingFang SC', 'Source Han Sans SC', 'Noto Sans SC', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, ui-monospace, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', 'Source Han Sans SC', 'Noto Sans SC', sans-serif;
 
   /* 字号五档,刻度外禁用
      修宪(桌面App实测):原刻度 10/12/14/16/20 整体偏小,全刻度上移;
