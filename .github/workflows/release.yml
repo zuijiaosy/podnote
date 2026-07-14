@@ -13,8 +13,8 @@ permissions:
 
 jobs:
   check-version:
-    if: github.event_name == 'push' 
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    runs-on: ubuntu-lates
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: 校验 tag 与三处版本号一致
@@ -37,13 +37,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
+          - platform: macos-lates
             target: aarch64-apple-darwin
             bundles: dmg
           - platform: macos-15-intel
             target: x86_64-apple-darwin
             bundles: dmg
-          - platform: windows-latest
+          - platform: windows-lates
             target: x86_64-pc-windows-msvc
             bundles: nsis,msi
     runs-on: ${{ matrix.platform }}
@@ -56,7 +56,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
-      - name: 安装 Rust target
+      - name: 安装 Rust targe
         run: rustup target add ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -90,14 +90,14 @@ jobs:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
 
       - name: 只构建不发布(手动触发)
-        if: github.event_name == 'workflow_dispatch' 
+        if: github.event_name == 'workflow_dispatch'
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         with:
           projectPath: app
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
 
       - name: 上传构建产物(手动触发)
-        if: github.event_name == 'workflow_dispatch' 
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: podnote-${{ matrix.target }}
