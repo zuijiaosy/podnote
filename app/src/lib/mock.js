@@ -54,23 +54,23 @@ const notes = {
   m1: ep125,
   m2: ep143,
   m4: { ...ep125, meta: { ...ep125.meta, title: "EP124 为什么 Agent 时代,CLI 反而成了最优解" } },
-  m5: { ...ep143, meta: { ...ep143.meta, title: "Sam Altman on the Future of Compute" } },
+  m5: { ...ep143, meta: { ...ep143.meta, title: "Ada Voss on the Future of Compute" } },
   m6: ep125, m7: ep125, m8: ep125,
 };
 let records = [
   { id: "m1", url: ep125.meta.url, show: ep125.meta.podcast, title: ep125.meta.title, date: "07-09", durationSec: ep125.meta.durationSec, status: "ready", readAt: null },
   { id: "m2", url: ep143.meta.url, show: ep143.meta.podcast, title: ep143.meta.title, date: "07-06", durationSec: ep143.meta.durationSec, status: "ready", readAt: null },
-  { id: "m3", url: "https://mock/e/m3", show: "硅谷101", title: "芯片战争下半场:先进封装", date: "06-28", durationSec: 3922, status: "error", errStage: "RESOLVE", errMessage: "没解析出音频地址(模拟错误)", readAt: null },
-  { id: "m4", url: "https://mock/e/m4", show: "硬地骇客", title: "EP124 为什么 Agent 时代,CLI 反而成了最优解", date: "06-20", durationSec: 4100, status: "ready", readAt: 1751500000 },
+  { id: "m3", url: "https://mock/e/m3", show: "像素山谷", title: "芯片战争下半场:先进封装", date: "06-28", durationSec: 3922, status: "error", errStage: "RESOLVE", errMessage: "没解析出音频地址(模拟错误)", readAt: null },
+  { id: "m4", url: "https://mock/e/m4", show: "代码电台", title: "EP41 为什么 Agent 时代,CLI 反而成了最优解", date: "06-20", durationSec: 4100, status: "ready", readAt: 1751500000 },
   // m5:长英文频道名 — 自测频道条单行截断;m6-m8:凑满 7 个频道自测「+N」折叠(归档态,不占未读收件箱)
-  { id: "m5", url: "https://mock/e/m5", show: "No Priors: Artificial Intelligence | Technology | Startups", title: "Sam Altman on the Future of Compute", date: "07-11", durationSec: 2860, status: "ready", readAt: null },
-  { id: "m6", url: "https://mock/e/m6", show: "Lex Fridman Podcast", title: "Demis Hassabis: AlphaFold and AGI", date: "06-15", durationSec: 7200, status: "ready", readAt: 1751000000 },
-  { id: "m7", url: "https://mock/e/m7", show: "内核恐慌", title: "Vol.88 编译器的浪漫", date: "06-10", durationSec: 5400, status: "ready", readAt: 1750900000 },
-  { id: "m8", url: "https://mock/e/m8", show: "疯投圈", title: "第 92 期:咖啡的生意经", date: "06-05", durationSec: 4800, status: "ready", readAt: 1750800000 },
+  { id: "m5", url: "https://mock/e/m5", show: "Signal & Noise: Artificial Intelligence | Technology | Startups", title: "Ada Voss on the Future of Compute", date: "07-11", durationSec: 2860, status: "ready", readAt: null },
+  { id: "m6", url: "https://mock/e/m6", show: "The Long Compute Podcast", title: "Nora Feld: Protein Models and AGI", date: "06-15", durationSec: 7200, status: "ready", readAt: 1751000000 },
+  { id: "m7", url: "https://mock/e/m7", show: "栈溢出电台", title: "Vol.88 编译器的浪漫", date: "06-10", durationSec: 5400, status: "ready", readAt: 1750900000 },
+  { id: "m8", url: "https://mock/e/m8", show: "回本为止", title: "第 92 期:咖啡的生意经", date: "06-05", durationSec: 4800, status: "ready", readAt: 1750800000 },
 ];
 let subs = [
-  { pid: "mock-pid-1", title: "硬地骇客", lastPub: "2026-06-09T14:02:10.100Z" },
-  { pid: "mock-pid-2", title: "张小珺Jùn｜商业访谈录", lastPub: "2026-07-06T10:00:00.000Z" },
+  { pid: "mock-pid-1", title: "代码电台", lastPub: "2026-06-09T14:02:10.100Z" },
+  { pid: "mock-pid-2", title: "深水区访谈", lastPub: "2026-07-06T10:00:00.000Z" },
 ];
 // 问答:当前内容版本 + 预置一轮旧版记录(transcriptHash 不同 → 自测"内容已更新"分隔线)
 const QA_REV = { transcriptHash: "mock-t2", noteHash: "mock-n2", promptVersion: "qa-1", model: "grok-4.5", protocol: "openai-responses" };
@@ -193,7 +193,7 @@ export const mockApi = {
     await sleep(800);
     const id = `mock-sub-${++seq}`;
     records = [
-      { id, url: `https://mock/e/${id}`, show: "硬地骇客", title: "EP128 模拟新单集(订阅自动发现)", date: "07-10", durationSec: 3600, status: "queued", readAt: null },
+      { id, url: `https://mock/e/${id}`, show: "代码电台", title: "EP43 模拟新单集(订阅自动发现)", date: "07-10", durationSec: 3600, status: "queued", readAt: null },
       ...records,
     ];
     emit("subscriptions-changed", null);
@@ -236,14 +236,14 @@ export const mockApi = {
     current: { ...QA_REV },
     estInputTokens: 21400,
   }),
-  /** 划词纠正查证:canned verdict — 含 "面筋"/"Player" 返回已证实,其余返回推测 */
+  /** 划词纠正查证:canned verdict — 含 "墨盒"/"动利" 返回已证实,其余返回推测 */
   researchTerm: async (_id, term) => {
     await sleep(1200);
-    if (/players?/i.test(term)) {
-      return { corrected: "No Priors", confidence: "confirmed", evidenceUrl: "https://www.no-priors.com/", note: "官方网站与各播客平台写法均为 No Priors" };
+    if (term.includes("动利")) {
+      return { corrected: term.replace(/动利/g, "动力"), confidence: "confirmed", evidenceUrl: "https://example.com/origindrive", note: "官网写法为「原点动力」" };
     }
-    if (term.includes("面筋")) {
-      return { corrected: term.replace(/面筋/g, "面基"), confidence: "confirmed", evidenceUrl: "https://www.xiaoyuzhoufm.com/", note: "小宇宙节目页写法为「面基」" };
+    if (term.includes("墨盒")) {
+      return { corrected: term.replace(/墨盒/g, "墨匣"), confidence: "confirmed", evidenceUrl: "https://example.com/mobox", note: "产品页写法为「墨匣」" };
     }
     if (term.length <= 2) return { corrected: null, confidence: "speculative", evidenceUrl: null, note: "没有找到更可信的写法" };
     return { corrected: `${term}(修)`, confidence: "speculative", evidenceUrl: null, note: "证据不足,仅为推测(mock)" };

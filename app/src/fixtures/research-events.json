@@ -1,31 +1,31 @@
 [
   { "type": "round", "n": 1 },
   { "type": "textDelta", "text": "我来核查这些分块里的专有名词。" },
-  { "type": "textDelta", "text": "通读后有几个名称需要搜索确认:「No Players」在 AI 播客语境里很可能是「No Priors」;「施骅伦」《英超相关的嘉宾名需要核对写法;「面筋」疑似节目名转写错误。" },
+  { "type": "textDelta", "text": "通读后有几个名称需要搜索确认:「原点动利」在机器人语境里很可能是「原点动力」;「陆志远」这位嘉宾名需要核对写法;「墨盒」疑似工具名转写错误。" },
   { "type": "textDelta", "text": "先逐个搜索验证。" },
-  { "type": "toolCall", "callId": "c1", "name": "search", "args": { "query": "No Priors podcast Elad Gil Sarah Guo" } },
+  { "type": "toolCall", "callId": "c1", "name": "search", "args": { "query": "原点动力 家用机器人 Pico" } },
   { "type": "toolResult", "callId": "c1", "ok": true, "hits": [
-    { "title": "No Priors: AI, Machine Learning, Tech, & Startups", "url": "https://www.no-priors.com/", "content": "No Priors is a podcast hosted by Sarah Guo and Elad Gil, interviewing the leading engineers, researchers and founders in AI." },
-    { "title": "No Priors - Apple Podcasts", "url": "https://podcasts.apple.com/us/podcast/no-priors/id1668002688", "content": "Technology moves fast. Sarah Guo and Elad Gil talk to the founders and researchers behind the AI wave." }
+    { "title": "原点动力 — 让机器人先进十万个家", "url": "https://example.com/origindrive", "content": "原点动力是一家家用机器人公司,旗下桌面机器人 Pico 与 Atlas 底座已进入量产。" },
+    { "title": "原点动力完成新一轮融资", "url": "https://example.com/news/origindrive-funding", "content": "家用机器人公司原点动力宣布完成融资,将投入端侧模型量产路线。" }
   ], "message": "" },
-  { "type": "toolCall", "callId": "c2", "name": "search", "args": { "query": "面基 播客 老钱日日谈" } },
+  { "type": "toolCall", "callId": "c2", "name": "search", "args": { "query": "墨匣 本地优先 笔记工具" } },
   { "type": "toolResult", "callId": "c2", "ok": true, "hits": [
-    { "title": "面基 - 小宇宙播客", "url": "https://www.xiaoyuzhoufm.com/podcast/61576b8e73a0f6e17aa5b45b", "content": "「面基」是老钱主理的播客,聊投资、聊生活。" }
+    { "title": "墨匣 — 本地优先的笔记工具", "url": "https://example.com/mobox", "content": "「墨匣」是江树开发的 local-first 笔记应用,单目录状态,支持网盘同步。" }
   ], "message": "" },
-  { "type": "textDelta", "text": "「No Priors」与「面基」都已确认。再验证嘉宾名与另一个不确定的工具名。" },
+  { "type": "textDelta", "text": "「原点动力」与「墨匣」都已确认。再验证嘉宾名与另一个不确定的工具名。" },
   { "type": "round", "n": 2 },
-  { "type": "toolCall", "callId": "c3", "name": "search", "args": { "query": "施骅伦 英超 足球 播客 嘉宾" } },
+  { "type": "toolCall", "callId": "c3", "name": "search", "args": { "query": "陆志远 机器人 访谈 嘉宾" } },
   { "type": "toolResult", "callId": "c3", "ok": false, "hits": [], "message": "搜索失败: Tavily 出错 (429)" },
-  { "type": "toolCall", "callId": "c4", "name": "search", "args": { "query": "Snipd AI podcast player" } },
+  { "type": "toolCall", "callId": "c4", "name": "search", "args": { "query": "归档架 白杨 同步服务" } },
   { "type": "toolResult", "callId": "c4", "ok": true, "hits": [
-    { "title": "Snipd — AI Podcast Player", "url": "https://www.snipd.com/", "content": "Snipd is an AI-powered podcast player that lets you capture and organize the best moments." }
+    { "title": "归档架 — 个人资料同步工具", "url": "https://example.com/archiverack", "content": "「归档架」是白杨的第一款产品,以账号体系加云同步为核心。" }
   ], "message": "" },
   { "type": "textDelta", "text": "嘉宾名的检索暂时失败,按语音推测处理并标注为推测。现在整理终局修正表。" },
   { "type": "round", "n": 3 },
   { "type": "final", "items": [
-    { "original": "No Players", "corrected": "No Priors", "confidence": "confirmed", "evidenceUrl": "https://www.no-priors.com/", "note": "Elad Gil 和 Sarah Guo 主持的 AI 播客,官网写法为 No Priors" },
-    { "original": "面筋", "corrected": "面基", "confidence": "confirmed", "evidenceUrl": "https://www.xiaoyuzhoufm.com/podcast/61576b8e73a0f6e17aa5b45b", "note": "老钱主理的播客,小宇宙节目页写法为「面基」" },
-    { "original": "skills", "corrected": "Snipd", "confidence": "speculative", "evidenceUrl": "https://www.snipd.com/", "note": "结合「每天 catch up」的语境推测是 AI 播客播放器 Snipd,发音相近" },
-    { "original": "施骅伦", "corrected": null, "confidence": "speculative", "evidenceUrl": null, "note": "没有搜到该嘉宾的公开资料,无法判断写法,保留原文" }
+    { "original": "原点动利", "corrected": "原点动力", "confidence": "confirmed", "evidenceUrl": "https://example.com/origindrive", "note": "家用机器人公司,官网写法为「原点动力」" },
+    { "original": "墨盒", "corrected": "墨匣", "confidence": "confirmed", "evidenceUrl": "https://example.com/mobox", "note": "江树开发的 local-first 笔记工具,产品页写法为「墨匣」" },
+    { "original": "归当架", "corrected": "归档架", "confidence": "speculative", "evidenceUrl": "https://example.com/archiverack", "note": "结合「云同步」的语境推测是白杨的产品「归档架」,发音相近" },
+    { "original": "陆志远", "corrected": null, "confidence": "speculative", "evidenceUrl": null, "note": "没有搜到该嘉宾的公开资料,无法判断写法,保留原文" }
   ] }
 ]

@@ -287,8 +287,8 @@ mod tests {
             },
             // 未知 confidence → speculative
             Suggestion {
-                original: "Saito".into(),
-                corrected: Some(" 曲凯 ".into()),
+                original: "阿沅".into(),
+                corrected: Some(" 阿远 ".into()),
                 confidence: "maybe".into(),
                 evidence_url: None,
                 note: String::new(),
@@ -304,7 +304,7 @@ mod tests {
         ]);
         assert_eq!(items.len(), 2);
         assert!(items[0].corrected.is_none());
-        assert_eq!(items[1].corrected.as_deref(), Some("曲凯"));
+        assert_eq!(items[1].corrected.as_deref(), Some("阿远"));
         assert_eq!(items[1].confidence, "speculative");
     }
 

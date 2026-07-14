@@ -27,21 +27,21 @@ export const DEMO_PEAKS = (() => {
 export const EPISODES = [
   fromNote("e1", ep125, "07-10"),
   {
-    id: "e2", show: "声动早咖啡", title: "AI 会取代播客剪辑师吗",
+    id: "e2", show: "晨间信号", title: "AI 会取代播客剪辑师吗",
     date: "07-08", durationSec: 1451, duration: "24:11",
     status: "processing", statusLabel: "转写中", elapsed: "04:37",
     note: null,
   },
   fromNote("e3", ep143, "07-02"),
   {
-    id: "e4", show: "硅谷101", title: "芯片战争下半场:先进封装",
+    id: "e4", show: "像素山谷", title: "芯片战争下半场:先进封装",
     date: "06-28", durationSec: 3922, duration: "1:05:22",
     status: "error", errStage: "RESOLVE",
     errReason: "没解析出音频地址,小宇宙页面结构可能变了",
     note: null,
   },
   {
-    id: "e5", show: "疯投圈", title: "茶饮出海:蜜雪冰城在东南亚学到了什么",
+    id: "e5", show: "回本为止", title: "茶饮出海:新茶饮在东南亚学到了什么",
     date: "06-21", durationSec: 4210, duration: "1:10:10",
     status: "off", statusLabel: "排队中", queuePos: 1,
     note: null,
