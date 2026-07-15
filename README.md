@@ -4,16 +4,25 @@
 
 粘贴一条[小宇宙](https://www.xiaoyuzhoufm.com/)单集链接 → 云端转写(阿里百炼 fun-asr,含说话人分离)→ LLM 生成带归属的结构化中文笔记。笔记是收听的伴生品:每条观点、每句原话都带时间戳,点击回跳重听,而不是替代收听。
 
-![主界面:磁带架 + 结构化笔记 + 结构目录 + 波形播放器](docs/screenshots/01-note.png)
+![主界面(磁带机皮肤 · 亮色):磁带架 + 结构化笔记 + 结构目录 + 波形播放器](docs/screenshots/01-note.png)
+
+## 两种皮肤 × 亮暗外观
+
+内置两张皮:**磁带机**(实体按键 + LCD 荧光屏)与**玻璃**(悬浮半透明面板),各配亮/暗外观(可跟随系统),设置页即点即换,切换时新主题从屏幕中心圆形扩散铺开。
+
+| 磁带机 | 玻璃 |
+|---|---|
+| ![磁带机皮肤 · 暗色](docs/screenshots/theme-cassette-dark.png) | ![玻璃皮肤 · 暗色](docs/screenshots/theme-glass-dark.png) |
+| ![磁带机皮肤 · 亮色](docs/screenshots/01-note.png) | ![玻璃皮肤 · 亮色](docs/screenshots/theme-glass-light.png) |
 
 ## 界面
 
 | | |
 |---|---|
-| ![单集 AI 问答:基于完整转写稿,时间戳可回跳,token 用量透明](docs/screenshots/02-qa.png) | ![字幕:说话人分离 + 逐句时间戳,点击回跳播放](docs/screenshots/03-transcript.png) |
-| **单集 AI 问答** — 基于完整转写稿提问,答案带可点击时间戳,用量透明 | **字幕** — 说话人分离 + 逐句时间戳,点击回跳重听 |
-| ![添加流程:解析 → 转写 → 生成笔记的管线进度灯](docs/screenshots/05-addflow.png) | ![设置:BYO-key 三层配置 + 连接自检](docs/screenshots/04-settings.png) |
-| **添加单集** — 解析 → 云端转写 → 生成笔记,进度灯全程可见 | **设置** — 自带钥匙(BYO-key),连接自检发最小真实请求验证配置 |
+| ![单集 AI 问答(玻璃 · 暗色):基于完整转写稿,时间戳可回跳,token 用量透明](docs/screenshots/02-qa.png) | ![字幕(磁带机 · 暗色):说话人分离 + 逐句时间戳,点击回跳播放](docs/screenshots/03-transcript.png) |
+| **单集 AI 问答** — 基于完整转写稿提问,答案带可点击时间戳,用量透明(玻璃 · 暗色) | **字幕** — 说话人分离 + 逐句时间戳,点击回跳重听(磁带机 · 暗色) |
+| ![添加流程(磁带机 · 亮色):解析 → 转写 → 生成笔记的管线进度灯](docs/screenshots/05-addflow.png) | ![设置(玻璃 · 亮色):外观切换 + BYO-key 配置 + 连接自检](docs/screenshots/04-settings.png) |
+| **添加单集** — 解析 → 云端转写 → 生成笔记,进度灯全程可见(磁带机 · 亮色) | **设置** — 皮肤/外观切换,自带钥匙(BYO-key),连接自检验证配置(玻璃 · 亮色) |
 
 ## 产品哲学
 
