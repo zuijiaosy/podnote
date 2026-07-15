@@ -1,12 +1,12 @@
-# design/ — 设计真源与历史快照
+# design/ — 设计真源
 
 | 文件 | 状态 | 说明 |
 |---|---|---|
-| `Podnote-standalone.html` | **现行设计真源** | 仪器风设计系统的权威版本,`app/src/tokens.css` 与 `app/src/components/` 从这里原样移植 |
-| `Podnote-v2.html` | 历史快照 | 第二版设计探索 |
-| `Podnote-v1.html` | 历史快照 | 最初的整页设计稿 |
+| `DESIGN-v4.md` | **现行设计真源(v4「双皮肤仪器」)** | 与 `app/src/tokens.css` 共同构成 v4 宪法;皮肤机制、token 结构、组件语言、Do/Don't 都在这里 |
+| `explorations/09-dual-theme.html` | **v4 交互原型** | 双皮肤 × 亮暗四种组合的可切换原型,浏览器直接打开;右上角切换器,支持 `?skin=&mode=` 直达 |
+| `explorations/07-teenage-cassette.html` | 历史探索 | v4 磁带机皮肤的单皮肤前身 |
+| `explorations/08-liquid-glass.html` | 历史探索 | v4 玻璃皮肤的单皮肤前身 |
 
-这些是自包含的 HTML 导出物(内嵌脚本与样式),直接用浏览器打开即可查看。
-其中的 `@font-face` 指向导出时的占位引用,缺失时会回落到系统字体,不影响评审。
+v1(整页设计稿)、v2(仪器风 standalone)、v3(编辑部纸面)及 2026-07 设计方向探索的其余方案已删除,如需追溯走 git 历史。
 
-改设计系统的规则:先改真源,再同步 `tokens.css`,禁止只改代码侧(见根目录 CLAUDE.md 的设计系统章节)。
+改设计系统的规则:先改 `DESIGN-v4.md` 真源,再同步 `tokens.css` 与组件,禁止只改代码侧(见根目录 CLAUDE.md 的设计系统章节)。新界面交付前必须在四种组合(`?skin=cassette|glass&mode=light|dark`)下自测。

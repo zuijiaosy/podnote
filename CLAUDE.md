@@ -61,8 +61,11 @@ cd app && npm run tauri build
 
 ## 设计系统(app/src/components/)
 
-`core.jsx`(Button/Input/Select/Segmented/Lever/Checkbox/FieldRow) + `instrument.jsx`(StatusLabel/IndicatorLight/Timestamp/EpisodeItem/Waveform),移植自 `design/Podnote-standalone.html`(设计真源)。仪器风硬规则:
-- 不用系统原生控件(下拉是自绘的,面板材质 = panel 底 + line-soft 描边,无阴影)
-- 中文最低 12px(`--text-sm`),中文禁入等宽字体;机器内容(时间戳/key/URL)用 mono
-- 选中态语言 = `fill-active` 底 + `ink` 描边;状态灯四态:灰待命/炭呼吸运转/绿常亮完成/橙常亮需要人
-- 动效用 tokens.css 的 `pn-enter`/`pn-pop`/`pn-flash` + `--dur`/`--ease`,120ms 急停风格
+`core.jsx`(Button/Input/Select/Segmented/Lever/Checkbox/FieldRow) + `instrument.jsx`(StatusLabel/IndicatorLight/Timestamp/EpisodeItem/Waveform)。宪法 v4「双皮肤仪器」,真源 = `design/DESIGN-v4.md` + `app/src/tokens.css` + 原型 `design/explorations/09-dual-theme.html`。硬规则:
+- **皮肤 × 外观**:`<html data-skin="cassette|glass" data-mode="light|dark">` 驱动四种组合;组件只消费语义 token,禁止在组件里写 data-skin 条件分支(结构性差异只进 tokens.css 的 `.pn-*` 皮肤作用域类);主题切换在 `lib/theme.js`,偏好存 localStorage,不经 Rust
+- **一切视觉走 token**:表面四层 `--bg-app/--surface-1/--surface-2/--surface-well`,文字三档 `--txt/--dim/--faint`,物理 `--shadow-unit/key/well/pop` + `--radius-unit/item/ctl/field/chip` + `--blur`;写死十六进制色 = 违宪。v3 旧名(`--ink/--paper/--signal` 等)有兼容别名,新代码禁用旧名
+- `--accent` 是唯一强调色(主动作/花钱/激活/错误),一屏 ≤3 处;knob 按钮只给「要花钱/要启动」的动作
+- 两族字体:`--font-ui` + `--font-data`(等宽只给机器数据,中文禁入等宽,数字 `tabular-nums`);字体经 @fontsource 本地打包,零外联;中文界面一律全角标点
+- 状态灯四态:灰待命/呼吸运转/绿常亮完成/accent 常亮需要人;波形与状态灯是产品之魂,不许淡化
+- 不用系统原生控件(下拉自绘);动效用 tokens.css 的 `pn-enter`/`pn-pop`/`pn-flash` + `--dur`/`--ease`,120ms 急停风格,循环动画仅呼吸灯
+- 改屏组件后必须在四种组合下自测:浏览器 `?mock=1&skin=cassette|glass&mode=light|dark`

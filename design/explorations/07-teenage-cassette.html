@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Podnote · 方向07 TE Cassette — Teenage Engineering 硬件仪器</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: { extend: {
+    colors: {
+      shell: '#D9D7D2', face: '#E8E6E1', well: '#CBC9C4',
+      txt: '#1C1B19', dim: '#6B6965', faint: '#96948F',
+      orange: '#FF4D00', ok: '#00A651', screen: '#2A2A26', screentxt: '#C8E6B0',
+    },
+    fontFamily: { sans: ['IBM Plex Sans','PingFang SC','sans-serif'], mono: ['IBM Plex Mono','monospace'] },
+    boxShadow: {
+      key: 'inset 0 -2px 0 rgba(28,27,25,0.18), 0 1px 2px rgba(28,27,25,0.15)',
+      keydown: 'inset 0 2px 3px rgba(28,27,25,0.25)',
+      well: 'inset 0 1px 3px rgba(28,27,25,0.18)',
+      unit: '0 1px 0 rgba(255,255,255,0.7) inset, 0 2px 6px rgba(28,27,25,0.12)',
+    },
+  }}
+}
+</script>
+<style>
+  * { -webkit-font-smoothing: antialiased; }
+  .key { box-shadow: inset 0 -2px 0 rgba(28,27,25,0.18), 0 1px 2px rgba(28,27,25,0.15); transition: all 80ms; }
+  .key:active { transform: translateY(1px); box-shadow: inset 0 1px 2px rgba(28,27,25,0.2); }
+  .grill { background-image: radial-gradient(rgba(28,27,25,0.22) 1px, transparent 1px); background-size: 5px 5px; }
+  ::selection { background: rgba(255,77,0,0.25); }
+</style>
+</head>
+<body class="bg-shell text-txt font-sans text-[13px] overflow-hidden h-screen">
+<div class="flex h-full p-4 gap-4">
+
+  <!-- 侧栏:磁带架面板 -->
+  <aside class="w-[284px] shrink-0 bg-face rounded-xl shadow-unit flex flex-col overflow-hidden">
+    <div class="px-4 pt-4 pb-3 flex items-center gap-2.5">
+      <span class="font-mono font-semibold text-[15px] tracking-[-0.02em]">podnote<span class="text-orange">®</span></span>
+      <span class="font-mono text-[9px] text-faint mt-0.5">TAPE ARCHIVE</span>
+      <button class="key ml-auto h-7 px-3 rounded-md bg-orange text-white font-mono text-[11px] font-semibold">+ REC</button>
+    </div>
+    <div class="mx-4 mb-3 flex rounded-md bg-well shadow-well p-0.5 font-mono text-[10.5px]">
+      <button class="flex-1 py-1 rounded bg-face shadow-sm font-semibold">未读 6</button>
+      <button class="flex-1 py-1 text-dim">已归档 0</button>
+      <button class="flex-1 py-1 text-dim">全部</button>
+    </div>
+    <div class="flex-1 overflow-y-auto px-3 space-y-2 pb-3">
+      <!-- 选中:一盘正在放的磁带 -->
+      <div class="rounded-lg bg-white shadow-unit p-3 cursor-pointer relative border-l-4 border-orange">
+        <div class="flex items-baseline gap-2 font-mono text-[9.5px] text-faint">
+          <span class="text-orange font-semibold">硬地骇客</span><span class="ml-auto">07-13</span>
+        </div>
+        <p class="mt-1.5 font-semibold text-[13px] leading-snug">EP128 从 Palantir 到 OpenAI:FDE 会成为 AI 时代最重要的新岗位?</p>
+        <div class="mt-2 flex items-center gap-1.5 font-mono text-[9.5px]">
+          <span class="w-[7px] h-[7px] rounded-full bg-ok shadow-[0_0_4px] shadow-ok/50"></span>
+          <span class="text-dim">READY</span>
+          <span class="ml-auto text-faint tabular-nums">51:22</span>
+        </div>
+      </div>
+      <div class="rounded-lg bg-face hover:bg-white shadow-sm hover:shadow-unit p-3 cursor-pointer transition-all">
+        <div class="flex items-baseline gap-2 font-mono text-[9.5px] text-faint">
+          <span>硅谷101</span><span class="ml-auto">07-10</span>
+        </div>
+        <p class="mt-1.5 font-medium text-[13px] leading-snug text-txt/75">E243 特朗普“缓刑”红牌之外,美国资本如何硬控全球?</p>
+        <div class="mt-2 flex items-center gap-1.5 font-mono text-[9.5px] text-faint">
+          <span class="w-[7px] h-[7px] rounded-full bg-ok/60"></span>READY<span class="ml-auto tabular-nums">1:16:28</span>
+        </div>
+      </div>
+      <div class="rounded-lg bg-face hover:bg-white shadow-sm hover:shadow-unit p-3 cursor-pointer transition-all">
+        <div class="flex items-baseline gap-2 font-mono text-[9.5px] text-faint">
+          <span>硅谷101</span><span class="ml-auto">07-06</span>
+        </div>
+        <p class="mt-1.5 font-medium text-[13px] leading-snug text-txt/75">E242 最快半年AI跑通自进化?与陈天桥首席科学家聊AI科研</p>
+        <div class="mt-2 flex items-center gap-1.5 font-mono text-[9.5px] text-faint">
+          <span class="w-[7px] h-[7px] rounded-full bg-ok/60"></span>READY<span class="ml-auto tabular-nums">1:10:54</span>
+        </div>
+      </div>
+      <div class="rounded-lg bg-face hover:bg-white shadow-sm hover:shadow-unit p-3 cursor-pointer transition-all">
+        <div class="flex items-baseline gap-2 font-mono text-[9.5px] text-faint">
+          <span>NO PRIORS</span><span class="ml-auto">07-02</span>
+        </div>
+        <p class="mt-1.5 font-medium text-[13px] leading-snug text-txt/75">How Nuclear Will Unlock Energy Abundance</p>
+        <div class="mt-2 flex items-center gap-1.5 font-mono text-[9.5px]">
+          <span class="w-[7px] h-[7px] rounded-full bg-orange animate-pulse"></span>
+          <span class="text-orange">ASR… 04:12</span><span class="ml-auto text-faint tabular-nums">1:01:26</span>
+        </div>
+      </div>
+      <div class="rounded-lg bg-face hover:bg-white shadow-sm hover:shadow-unit p-3 cursor-pointer transition-all">
+        <div class="flex items-baseline gap-2 font-mono text-[9.5px] text-faint">
+          <span>硬地骇客</span><span class="ml-auto">05-12</span>
+        </div>
+        <p class="mt-1.5 font-medium text-[13px] leading-snug text-txt/75">EP126 Agent Harness,一个被低估的方向</p>
+        <div class="mt-2 flex items-center gap-1.5 font-mono text-[9.5px] text-faint">
+          <span class="w-[7px] h-[7px] rounded-full bg-ok/60"></span>READY<span class="ml-auto tabular-nums">50:05</span>
+        </div>
+      </div>
+    </div>
+    <div class="px-4 py-2.5 flex items-center gap-2 border-t border-txt/10">
+      <button class="key h-7 px-3 rounded-md bg-face font-mono text-[10.5px]">订阅</button>
+      <button class="key h-7 px-3 rounded-md bg-face font-mono text-[10.5px]">设置</button>
+      <div class="ml-auto grill w-10 h-6 rounded"></div>
+    </div>
+  </aside>
+
+  <!-- 主区:阅读机器 -->
+  <main class="flex-1 min-w-0 bg-face rounded-xl shadow-unit flex flex-col overflow-hidden">
+    <!-- 机器抬头:LCD 屏 -->
+    <header class="shrink-0 px-6 pt-5">
+      <div class="flex items-center gap-3">
+        <div class="bg-screen text-screentxt font-mono rounded-md px-3.5 py-2 text-[10.5px] leading-relaxed shadow-well">
+          <div class="flex gap-4"><span>硬地骇客</span><span>2026-07-13</span><span>51:22</span><span class="text-[#7CFF9B]">● READY</span></div>
+        </div>
+        <div class="ml-auto flex gap-1.5">
+          <button class="key h-8 px-3.5 rounded-md bg-face font-mono text-[11px] font-medium">Q&A</button>
+          <button class="key h-8 px-3.5 rounded-md bg-face font-mono text-[11px] font-medium">TTS</button>
+          <button class="key h-8 px-3.5 rounded-md bg-txt text-white font-mono text-[11px] font-medium">ARCHIVE</button>
+        </div>
+      </div>
+      <h1 class="mt-4 text-[24px] font-bold tracking-[-0.02em] leading-[1.3] max-w-[700px]">EP128 从 Palantir 到 OpenAI:FDE 会成为 AI 时代最重要的新岗位?</h1>
+      <div class="mt-4 flex items-end gap-0.5">
+        <button class="key px-4 py-1.5 rounded-t-md bg-white font-mono text-[11px] font-semibold border-b-2 border-orange">NOTES</button>
+        <button class="key px-4 py-1.5 rounded-t-md bg-face font-mono text-[11px] text-dim">SUBS</button>
+        <button class="key px-3 py-1.5 rounded-t-md bg-face font-mono text-[10px] text-faint ml-auto">↻ REGEN</button>
+      </div>
+    </header>
+
+    <!-- 纸带输出区 -->
+    <div class="flex-1 overflow-y-auto bg-white mx-6 rounded-b-none rounded-t-sm shadow-well">
+      <article class="max-w-[640px] mx-auto px-8 py-8 space-y-8">
+        <section>
+          <div class="flex items-center gap-2 font-mono text-[10px] text-faint tracking-[0.1em]">
+            <span class="bg-orange text-white px-1.5 py-0.5 rounded-sm font-semibold">01</span> CORE POINTS
+            <div class="flex-1 border-t border-dashed border-txt/20"></div>
+          </div>
+          <div class="mt-5 space-y-6">
+            <div>
+              <div class="flex items-baseline gap-2.5">
+                <button class="key font-mono text-[10px] px-1.5 py-0.5 rounded bg-face text-dim hover:text-orange tabular-nums">42:10</button>
+                <h3 class="font-semibold text-[14px]">FDE 本质是模型厂商寻找 PMF 的机制</h3>
+                <span class="font-mono text-[9.5px] text-faint">易笑</span>
+              </div>
+              <p class="mt-2 text-dim leading-[1.85] text-[13px]">现阶段 FDE 本质上是模型厂商用来在真实企业场景中寻找产品市场匹配(PMF)的机制。长期来看,FDE 可能会催生专门的第三方合作公司,而非永远由模型厂商直营。Settle 用「派遣间谍偷数据」来比喻,说明 FDE 的核心目标是拿到场景数据、建立粘性。</p>
+            </div>
+            <div>
+              <div class="flex items-baseline gap-2.5">
+                <button class="key font-mono text-[10px] px-1.5 py-0.5 rounded bg-face text-dim hover:text-orange tabular-nums">44:45</button>
+                <h3 class="font-semibold text-[14px]">AI 不会吃掉 SaaS,而是成为超级触手</h3>
+                <span class="font-mono text-[9.5px] text-faint">易笑</span>
+              </div>
+              <p class="mt-2 text-dim leading-[1.85] text-[13px]">大模型并未像过去预测的那样内化所有软件成为超级 App,反而正朝连接和控制现有软件的方向演进(如 Claude Code、Codex)。未来 AI 与软件生态将共存:AI Agent 作为超级触手,驱动企业已有的 SaaS 工具,做到更丝滑的协同,而非取代软件本身。</p>
+            </div>
+          </div>
+        </section>
+        <section>
+          <div class="flex items-center gap-2 font-mono text-[10px] text-faint tracking-[0.1em]">
+            <span class="bg-orange text-white px-1.5 py-0.5 rounded-sm font-semibold">02</span> QUOTES
+            <div class="flex-1 border-t border-dashed border-txt/20"></div>
+          </div>
+          <blockquote class="mt-5 rounded-md bg-face shadow-well p-5 font-mono">
+            <p class="text-[13px] leading-[1.9]">"抛开这些名词也好,Palantir 也好,还有抛开 AI,我们本质上去看 FD,我觉得它和国内的 TO B 的定制化软件交付没有任何本质的区别。"</p>
+            <footer class="mt-3 text-[10px] text-faint">>> 07:11 · 易笑</footer>
+          </blockquote>
+        </section>
+      </article>
+    </div>
+
+    <!-- 走带机构 -->
+    <footer class="shrink-0 px-6 py-4 flex items-center gap-4">
+      <div class="flex gap-1">
+        <button class="key w-11 h-9 rounded-md bg-white grid place-items-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="#1C1B19"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="key w-11 h-9 rounded-md bg-face grid place-items-center font-mono text-[10px] text-dim">◼</button>
+      </div>
+      <span class="font-mono text-[11px] tabular-nums bg-screen text-screentxt px-2.5 py-1 rounded shadow-well">00:00</span>
+      <div class="flex-1 h-9 rounded-md bg-well shadow-well relative flex items-center px-2 cursor-pointer">
+        <div class="w-full h-[3px] rounded-full bg-txt/15 relative">
+          <div class="absolute left-0 top-0 h-full w-[3%] rounded-full bg-orange"></div>
+          <div class="absolute left-[18%] -top-[4px] w-[3px] h-[11px] rounded-sm bg-txt/50"></div>
+          <div class="absolute left-[43%] -top-[4px] w-[3px] h-[11px] rounded-sm bg-txt/50"></div>
+          <div class="absolute left-[71%] -top-[4px] w-[3px] h-[11px] rounded-sm bg-txt/50"></div>
+          <div class="absolute left-[3%] -top-[5px] w-[13px] h-[13px] -ml-1.5 rounded-full bg-white border-2 border-orange shadow-sm"></div>
+        </div>
+      </div>
+      <span class="font-mono text-[11px] text-faint tabular-nums">51:22</span>
+      <button class="key h-8 px-2.5 rounded-md bg-face font-mono text-[11px] font-semibold">2.0×</button>
+    </footer>
+  </main>
+</div>
+</body>
+</html>

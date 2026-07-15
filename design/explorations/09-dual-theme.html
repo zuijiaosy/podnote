@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-skin="cassette" data-mode="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Podnote · 方向09 双皮肤主题系统 — 磁带/玻璃 × 亮/暗</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Podnote 主题系统原型
+   两个维度:data-skin = cassette | glass,data-mode = light | dark
+   组件只消费语义 token,四种组合零组件改动。
+   ============================================================ */
+
+/* ---------- 皮肤 A:磁带机(Teenage Engineering) ---------- */
+[data-skin="cassette"] {
+  --font-ui: 'IBM Plex Sans', 'PingFang SC', sans-serif;
+  --font-data: 'IBM Plex Mono', monospace;
+  --radius-unit: 14px; --radius-item: 10px; --radius-ctl: 8px; --radius-pill: 8px;
+  --blur: 0px;
+}
+[data-skin="cassette"][data-mode="light"] {
+  --bg-app: #D9D7D2;
+  --bg-app-img: none;
+  --surface-1: #E8E6E1;            /* 面板 */
+  --surface-2: #FFFFFF;            /* 卡片/纸面 */
+  --surface-well: #CBC9C4;         /* 凹槽 */
+  --surface-hover: #F4F2EE;
+  --border-unit: rgba(28,27,25,0.06);
+  --txt: #1C1B19; --dim: #6B6965; --faint: #96948F;
+  --accent: #FF4D00; --on-accent: #FFFFFF;
+  --ok: #00A651; --warn: #E8A200;
+  --lcd-bg: #2A2A26; --lcd-txt: #C8E6B0; --lcd-ok: #7CFF9B;
+  --shadow-unit: 0 1px 0 rgba(255,255,255,0.7) inset, 0 2px 6px rgba(28,27,25,0.12);
+  --shadow-key: inset 0 -2px 0 rgba(28,27,25,0.18), 0 1px 2px rgba(28,27,25,0.15);
+  --shadow-key-down: inset 0 1px 2px rgba(28,27,25,0.2);
+  --shadow-well: inset 0 1px 3px rgba(28,27,25,0.18);
+  --track: rgba(28,27,25,0.15); --track-mark: rgba(28,27,25,0.5);
+}
+[data-skin="cassette"][data-mode="dark"] {
+  --bg-app: #161618;
+  --bg-app-img: none;
+  --surface-1: #222225;
+  --surface-2: #2D2D31;
+  --surface-well: #101012;
+  --surface-hover: #35353A;
+  --border-unit: rgba(255,255,255,0.05);
+  --txt: #E9E7E2; --dim: #9C9A95; --faint: #6C6A66;
+  --accent: #FF5D14; --on-accent: #FFFFFF;
+  --ok: #3ECF6E; --warn: #E8B53A;
+  --lcd-bg: #0E100D; --lcd-txt: #9FE080; --lcd-ok: #5DFF85;
+  --shadow-unit: 0 1px 0 rgba(255,255,255,0.06) inset, 0 3px 10px rgba(0,0,0,0.45);
+  --shadow-key: inset 0 -2px 0 rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07), 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-key-down: inset 0 2px 3px rgba(0,0,0,0.5);
+  --shadow-well: inset 0 1px 4px rgba(0,0,0,0.55);
+  --track: rgba(255,255,255,0.12); --track-mark: rgba(255,255,255,0.45);
+}
+
+/* ---------- 皮肤 B:流体玻璃(Apple Liquid Glass) ---------- */
+[data-skin="glass"] {
+  --font-ui: Inter, -apple-system, 'PingFang SC', sans-serif;
+  --font-data: 'JetBrains Mono', ui-monospace, monospace;
+  --radius-unit: 26px; --radius-item: 18px; --radius-ctl: 999px; --radius-pill: 999px;
+  --blur: 40px;
+}
+[data-skin="glass"][data-mode="light"] {
+  --bg-app: #E8ECF2;
+  --bg-app-img: linear-gradient(160deg, #DCE8F5 0%, #EEE7F2 35%, #F5EDE3 70%, #E3EEF0 100%);
+  --surface-1: rgba(255,255,255,0.55);
+  --surface-2: rgba(255,255,255,0.62);
+  --surface-well: rgba(255,255,255,0.35);
+  --surface-hover: rgba(255,255,255,0.85);
+  --border-unit: rgba(255,255,255,0.75);
+  --txt: #1D1D1F; --dim: rgba(29,29,31,0.6); --faint: rgba(29,29,31,0.35);
+  --accent: #0071E3; --on-accent: #FFFFFF;
+  --ok: #34C759; --warn: #FF9F0A;
+  --lcd-bg: rgba(255,255,255,0.5); --lcd-txt: rgba(29,29,31,0.7); --lcd-ok: #248A3D;
+  --shadow-unit: 0 1px 1px rgba(255,255,255,0.9) inset, 0 12px 40px rgba(60,70,110,0.12);
+  --shadow-key: 0 1px 0 rgba(255,255,255,0.8) inset, 0 2px 8px rgba(60,70,110,0.08);
+  --shadow-key-down: 0 1px 4px rgba(60,70,110,0.15) inset;
+  --shadow-well: 0 1px 3px rgba(60,70,110,0.08) inset;
+  --track: rgba(29,29,31,0.08); --track-mark: rgba(29,29,31,0.3);
+}
+[data-skin="glass"][data-mode="dark"] {
+  --bg-app: #0D0F16;
+  --bg-app-img: linear-gradient(160deg, #101624 0%, #1A1426 35%, #221A20 70%, #0F1A22 100%);
+  --surface-1: rgba(28,30,40,0.55);
+  --surface-2: rgba(38,40,52,0.55);
+  --surface-well: rgba(10,12,18,0.4);
+  --surface-hover: rgba(58,60,76,0.65);
+  --border-unit: rgba(255,255,255,0.12);
+  --txt: #F5F5F7; --dim: rgba(245,245,247,0.6); --faint: rgba(245,245,247,0.32);
+  --accent: #409CFF; --on-accent: #FFFFFF;
+  --ok: #30D158; --warn: #FFD60A;
+  --lcd-bg: rgba(10,12,18,0.5); --lcd-txt: rgba(245,245,247,0.7); --lcd-ok: #30D158;
+  --shadow-unit: 0 1px 0 rgba(255,255,255,0.1) inset, 0 16px 50px rgba(0,0,0,0.5);
+  --shadow-key: 0 1px 0 rgba(255,255,255,0.1) inset, 0 2px 10px rgba(0,0,0,0.35);
+  --shadow-key-down: 0 1px 4px rgba(0,0,0,0.5) inset;
+  --shadow-well: 0 1px 3px rgba(0,0,0,0.4) inset;
+  --track: rgba(255,255,255,0.12); --track-mark: rgba(255,255,255,0.35);
+}
+
+/* ---------- 基础 ---------- */
+* { margin: 0; box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+html, body { height: 100%; }
+body {
+  font: 13px/1.55 var(--font-ui);
+  color: var(--txt);
+  background: var(--bg-app);
+  background-image: var(--bg-app-img);
+  overflow: hidden;
+  transition: background-color .35s ease, color .35s ease;
+}
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+.mono { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.dim { color: var(--dim); } .faint { color: var(--faint); }
+
+.themed { transition: background-color .35s ease, color .35s ease, border-color .35s ease, box-shadow .35s ease, border-radius .35s ease; }
+
+/* ---------- 语义组件(两皮肤共用) ---------- */
+.unit {
+  background: var(--surface-1);
+  border: 1px solid var(--border-unit);
+  border-radius: var(--radius-unit);
+  box-shadow: var(--shadow-unit);
+  backdrop-filter: blur(var(--blur)) saturate(1.6);
+}
+.item {
+  background: var(--surface-2);
+  border: 1px solid var(--border-unit);
+  border-radius: var(--radius-item);
+  box-shadow: var(--shadow-key);
+  cursor: pointer; padding: 12px 14px;
+}
+.item:hover { background: var(--surface-hover); }
+.item.active { border-left: 4px solid var(--accent); }
+[data-skin="glass"] .item.active { border-left-width: 1px; outline: 2.5px solid var(--accent); outline-offset: -1px; }
+.btn {
+  height: 30px; padding: 0 14px;
+  background: var(--surface-2);
+  border-radius: var(--radius-ctl);
+  box-shadow: var(--shadow-key);
+  font-weight: 500; font-size: 12.5px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { background: var(--surface-hover); }
+.btn:active { transform: translateY(1px); box-shadow: var(--shadow-key-down); }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
+.seg {
+  display: flex; padding: 3px; gap: 2px;
+  background: var(--surface-well);
+  border-radius: calc(var(--radius-ctl) + 3px);
+  box-shadow: var(--shadow-well);
+  font-size: 12px;
+}
+.seg button { flex: 1; padding: 5px 12px; border-radius: var(--radius-ctl); color: var(--dim); white-space: nowrap; }
+.seg button.on { background: var(--surface-2); color: var(--txt); font-weight: 600; box-shadow: var(--shadow-key); }
+.lcd {
+  background: var(--lcd-bg); color: var(--lcd-txt);
+  font-family: var(--font-data); font-size: 10.5px;
+  border-radius: var(--radius-pill);
+  padding: 7px 14px; box-shadow: var(--shadow-well);
+  display: inline-flex; gap: 16px; align-items: center;
+  backdrop-filter: blur(20px);
+}
+.ts {
+  font-family: var(--font-data); font-size: 10px; font-variant-numeric: tabular-nums;
+  padding: 2px 7px; border-radius: var(--radius-pill);
+  background: var(--surface-well); color: var(--dim);
+  box-shadow: var(--shadow-well);
+}
+.ts:hover { color: var(--accent); }
+.light-dot { width: 7px; height: 7px; border-radius: 999px; flex: none; }
+
+/* ---------- 布局 ---------- */
+.frame { display: flex; height: 100%; padding: 16px; gap: 16px; }
+aside.unit { width: 292px; flex: none; display: flex; flex-direction: column; overflow: hidden; }
+main.unit { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+.list { flex: 1; overflow-y: auto; padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 9px; }
+.reading { flex: 1; overflow-y: auto; }
+.article { max-width: 660px; margin: 0 auto; padding: 8px 36px 120px; }
+
+/* 播放器:磁带=通栏走带台;玻璃=悬浮胶囊。同一 DOM,皮肤决定形态 */
+.player {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--surface-2); border: 1px solid var(--border-unit);
+  box-shadow: var(--shadow-unit);
+  backdrop-filter: blur(var(--blur)) saturate(1.6);
+}
+[data-skin="cassette"] .player { margin: 0 16px 14px; padding: 10px 14px; border-radius: var(--radius-item); }
+[data-skin="glass"] .player {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  width: min(620px, 92%); padding: 8px 18px 8px 8px; border-radius: 999px;
+}
+.play {
+  width: 38px; height: 38px; border-radius: 999px; flex: none;
+  background: var(--accent); color: var(--on-accent);
+  display: grid; place-items: center;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.play:active { transform: scale(0.95); }
+.track { flex: 1; position: relative; height: 22px; display: flex; align-items: center; cursor: pointer; }
+.track .rail { width: 100%; height: 4px; border-radius: 999px; background: var(--track); }
+.track .fill { position: absolute; left: 0; width: 3%; height: 4px; border-radius: 999px; background: var(--accent); }
+.track .mark { position: absolute; width: 3px; height: 11px; border-radius: 2px; background: var(--track-mark); top: 50%; transform: translateY(-50%); }
+
+/* ---------- 主题切换器(原型专用,不属于产品 UI) ---------- */
+.switcher {
+  position: fixed; top: 22px; right: 26px; z-index: 50;
+  display: flex; gap: 8px; align-items: center;
+  padding: 8px 10px; border-radius: 14px;
+  background: rgba(20,20,24,0.82); color: #fff;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+  font-size: 11.5px;
+}
+.switcher .grp { display: flex; background: rgba(255,255,255,0.1); border-radius: 9px; padding: 2px; }
+.switcher .grp button { padding: 4px 11px; border-radius: 7px; color: rgba(255,255,255,0.65); }
+.switcher .grp button.on { background: #fff; color: #111; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- 原型切换器 -->
+<div class="switcher">
+  <span style="opacity:.55">皮肤</span>
+  <div class="grp" id="skinGrp">
+    <button data-v="cassette" class="on">磁带机</button>
+    <button data-v="glass">玻璃</button>
+  </div>
+  <span style="opacity:.55">外观</span>
+  <div class="grp" id="modeGrp">
+    <button data-v="light" class="on">亮</button>
+    <button data-v="dark">暗</button>
+  </div>
+</div>
+
+<div class="frame">
+  <!-- 侧栏 -->
+  <aside class="unit themed">
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 16px 12px">
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.02em">Podnote</span>
+      <span class="mono faint" style="font-size:9px;letter-spacing:.12em">TAPE ARCHIVE</span>
+      <button class="btn btn-primary themed" style="margin-left:auto;height:28px">＋ 添加</button>
+    </div>
+    <div style="padding:0 14px 12px">
+      <div class="seg themed">
+        <button class="on themed">未读 6</button>
+        <button class="themed">已归档 0</button>
+        <button class="themed">全部</button>
+      </div>
+    </div>
+    <div class="list">
+      <div class="item active themed">
+        <div style="display:flex;justify-content:space-between;align-items:baseline" class="mono faint">
+          <span style="color:var(--accent);font-weight:600;font-size:10px">硬地骇客</span>
+          <span style="font-size:10px">07-13</span>
+        </div>
+        <p style="margin-top:6px;font-weight:600;font-size:13px;line-height:1.45">EP128 从 Palantir 到 OpenAI:FDE 会成为 AI 时代最重要的新岗位?</p>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px" class="mono">
+          <span class="light-dot" style="background:var(--ok);box-shadow:0 0 5px color-mix(in srgb, var(--ok) 60%, transparent)"></span>
+          <span class="dim" style="font-size:10px">就绪</span>
+          <span class="faint" style="margin-left:auto;font-size:10px">51:22</span>
+        </div>
+      </div>
+      <div class="item themed">
+        <div style="display:flex;justify-content:space-between;align-items:baseline" class="mono faint">
+          <span style="font-size:10px">硅谷101</span><span style="font-size:10px">07-10</span>
+        </div>
+        <p style="margin-top:6px;font-weight:500;font-size:13px;line-height:1.45;color:var(--dim)">E243 特朗普“缓刑”红牌之外,美国资本如何硬控全球?</p>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px" class="mono faint">
+          <span class="light-dot" style="background:color-mix(in srgb, var(--ok) 65%, transparent)"></span>
+          <span style="font-size:10px">就绪</span><span style="margin-left:auto;font-size:10px">1:16:28</span>
+        </div>
+      </div>
+      <div class="item themed">
+        <div style="display:flex;justify-content:space-between;align-items:baseline" class="mono faint">
+          <span style="font-size:10px">硅谷101</span><span style="font-size:10px">07-06</span>
+        </div>
+        <p style="margin-top:6px;font-weight:500;font-size:13px;line-height:1.45;color:var(--dim)">E242 最快半年AI跑通自进化?与陈天桥首席科学家聊AI科研</p>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px" class="mono faint">
+          <span class="light-dot" style="background:color-mix(in srgb, var(--ok) 65%, transparent)"></span>
+          <span style="font-size:10px">就绪</span><span style="margin-left:auto;font-size:10px">1:10:54</span>
+        </div>
+      </div>
+      <div class="item themed">
+        <div style="display:flex;justify-content:space-between;align-items:baseline" class="mono faint">
+          <span style="font-size:10px">NO PRIORS</span><span style="font-size:10px">07-02</span>
+        </div>
+        <p style="margin-top:6px;font-weight:500;font-size:13px;line-height:1.45;color:var(--dim)">How Nuclear Will Unlock Energy Abundance</p>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px" class="mono">
+          <span class="light-dot" style="background:var(--warn);animation:pulse 1.6s infinite"></span>
+          <span style="font-size:10px;color:var(--warn)">转写中 04:12</span>
+          <span class="faint" style="margin-left:auto;font-size:10px">1:01:26</span>
+        </div>
+      </div>
+      <div class="item themed">
+        <div style="display:flex;justify-content:space-between;align-items:baseline" class="mono faint">
+          <span style="font-size:10px">硬地骇客</span><span style="font-size:10px">05-12</span>
+        </div>
+        <p style="margin-top:6px;font-weight:500;font-size:13px;line-height:1.45;color:var(--dim)">EP126 Agent Harness,一个被低估的方向</p>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px" class="mono faint">
+          <span class="light-dot" style="background:color-mix(in srgb, var(--ok) 65%, transparent)"></span>
+          <span style="font-size:10px">就绪</span><span style="margin-left:auto;font-size:10px">50:05</span>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border-unit)">
+      <button class="btn themed" style="height:26px;font-size:11.5px">订阅</button>
+      <button class="btn themed" style="height:26px;font-size:11.5px">设置</button>
+      <span class="mono faint" style="margin-left:auto;font-size:10px">本月 ¥3.42</span>
+    </div>
+  </aside>
+
+  <!-- 主区 -->
+  <main class="unit themed">
+    <header style="padding:18px 26px 0">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="lcd themed">
+          <span>硬地骇客</span><span>2026-07-13</span><span>51:22</span>
+          <span style="color:var(--lcd-ok)">● READY</span>
+        </span>
+        <div style="margin-left:auto;display:flex;gap:7px">
+          <button class="btn themed">问答</button>
+          <button class="btn themed">朗读</button>
+          <button class="btn btn-primary themed">归档</button>
+        </div>
+      </div>
+      <h1 style="margin-top:16px;font-size:23px;font-weight:700;letter-spacing:-0.02em;line-height:1.32;max-width:700px">EP128 从 Palantir 到 OpenAI:FDE 会成为 AI 时代最重要的新岗位?</h1>
+      <div style="margin-top:14px;display:flex;align-items:center">
+        <div class="seg themed" style="display:inline-flex">
+          <button class="on themed">笔记</button>
+          <button class="themed">字幕</button>
+        </div>
+        <button class="faint themed" style="margin-left:auto;font-size:11px;font-family:var(--font-data)">↻ 重新生成</button>
+      </div>
+    </header>
+
+    <div class="reading" style="margin-top:14px">
+      <article class="article">
+        <section>
+          <div style="display:flex;align-items:center;gap:8px" class="mono faint">
+            <span style="background:var(--accent);color:var(--on-accent);padding:2px 7px;border-radius:var(--radius-pill);font-weight:600;font-size:10px">01</span>
+            <span style="font-size:10px;letter-spacing:.1em">核心观点</span>
+            <div style="flex:1;border-top:1px dashed var(--track)"></div>
+          </div>
+          <div style="margin-top:18px;display:flex;flex-direction:column;gap:22px">
+            <div>
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <button class="ts themed">42:10</button>
+                <h3 style="font-size:14px;font-weight:600">FDE 本质是模型厂商寻找 PMF 的机制</h3>
+                <span class="mono faint" style="font-size:9.5px">易笑</span>
+              </div>
+              <p class="dim" style="margin-top:8px;line-height:1.85;font-size:13px">现阶段 FDE 本质上是模型厂商用来在真实企业场景中寻找产品市场匹配(PMF)的机制。长期来看,FDE 可能会催生专门的第三方合作公司,而非永远由模型厂商直营。Settle 用「派遣间谍偷数据」来比喻,说明 FDE 的核心目标是拿到场景数据、建立粘性。</p>
+            </div>
+            <div>
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <button class="ts themed">44:45</button>
+                <h3 style="font-size:14px;font-weight:600">AI 不会吃掉 SaaS,而是成为超级触手</h3>
+                <span class="mono faint" style="font-size:9.5px">易笑</span>
+              </div>
+              <p class="dim" style="margin-top:8px;line-height:1.85;font-size:13px">大模型并未像过去预测的那样内化所有软件成为超级 App,反而正朝连接和控制现有软件的方向演进(如 Claude Code、Codex)。未来 AI 与软件生态将共存:AI Agent 作为超级触手,驱动企业已有的 SaaS 工具,做到更丝滑的协同,而非取代软件本身。</p>
+            </div>
+          </div>
+        </section>
+        <section style="margin-top:30px">
+          <div style="display:flex;align-items:center;gap:8px" class="mono faint">
+            <span style="background:var(--accent);color:var(--on-accent);padding:2px 7px;border-radius:var(--radius-pill);font-weight:600;font-size:10px">02</span>
+            <span style="font-size:10px;letter-spacing:.1em">值得记住的话</span>
+            <div style="flex:1;border-top:1px dashed var(--track)"></div>
+          </div>
+          <blockquote class="item themed" style="margin-top:18px;cursor:default;padding:18px 20px">
+            <p style="font-size:14.5px;line-height:1.85;font-weight:500">「抛开这些名词也好,Palantir 也好,还有抛开 AI,我们本质上去看 FD,我觉得它和国内的 TO B 的定制化软件交付没有任何本质的区别。」</p>
+            <footer style="margin-top:10px;display:flex;align-items:center;gap:8px">
+              <button class="ts themed">07:11</button>
+              <span class="mono faint" style="font-size:9.5px">易笑</span>
+            </footer>
+          </blockquote>
+        </section>
+      </article>
+    </div>
+
+    <!-- 播放器:同一 DOM,cassette=走带台 / glass=悬浮胶囊 -->
+    <div class="player themed">
+      <button class="play themed">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <span class="mono dim" style="font-size:11px">00:00</span>
+      <div class="track">
+        <div class="rail themed"></div>
+        <div class="fill themed"></div>
+        <div class="mark themed" style="left:18%"></div>
+        <div class="mark themed" style="left:43%"></div>
+        <div class="mark themed" style="left:71%"></div>
+      </div>
+      <span class="mono faint" style="font-size:11px">51:22</span>
+      <button class="btn themed" style="height:26px;font-family:var(--font-data);font-size:11px;padding:0 10px">2.0×</button>
+    </div>
+  </main>
+</div>
+
+<style>@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }</style>
+<script>
+const root = document.documentElement;
+function bind(grpId, attr) {
+  const grp = document.getElementById(grpId);
+  grp.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    grp.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    root.setAttribute(attr, b.dataset.v);
+    localStorage.setItem('pn-' + attr, b.dataset.v);
+  });
+  const saved = localStorage.getItem('pn-' + attr);
+  if (saved) { const b = grp.querySelector(`[data-v="${saved}"]`); if (b) b.click(); }
+}
+bind('skinGrp', 'data-skin');
+bind('modeGrp', 'data-mode');
+// URL 直达:?skin=cassette|glass&mode=light|dark(优先级高于 localStorage)
+const q = new URLSearchParams(location.search);
+for (const [key, grpId] of [['skin','skinGrp'], ['mode','modeGrp']]) {
+  const v = q.get(key);
+  if (v) { const b = document.getElementById(grpId).querySelector(`[data-v="${v}"]`); if (b) b.click(); }
+}
+</script>
+</body>
+</html>
