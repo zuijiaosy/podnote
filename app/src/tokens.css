@@ -1,96 +1,285 @@
-/* Podnote 设计宪法 v2 — TOKENS
-   唯一真源:design/Podnote-standalone.html,原样移植,禁止私改 */
+/* Podnote 设计宪法 v4 — TOKENS「双皮肤仪器」
+   v4 修宪:视觉语言 = 两张皮(磁带机 cassette / 流体玻璃 glass)× 两种外观(light / dark)。
+   同一份 DOM 与组件,只消费语义 token;皮肤与外观由 <html data-skin data-mode> 驱动。
+   真源 = 本文件 + design/DESIGN-v4.md + design/explorations/09-dual-theme.html(原型)。
+   v3「编辑部纸面」已废止;衬线族退役(--font-serif 仅作兼容别名指向 UI 字体)。 */
 
+/* ============ 皮肤 A:磁带机(Teenage Engineering / Braun 血统) ============ */
+[data-skin="cassette"] {
+  --font-ui: 'IBM Plex Sans', -apple-system, 'PingFang SC', 'Microsoft YaHei UI', sans-serif;
+  --font-data: 'IBM Plex Mono', 'SF Mono', Menlo, ui-monospace, monospace;
+  --radius-unit: 14px;   /* 机壳面板 */
+  --radius-item: 10px;   /* 卡片/走带台 */
+  --radius-ctl: 8px;     /* 按键/分段 */
+  --radius-field: 8px;   /* 输入凹槽 */
+  --radius-chip: 6px;    /* 时间戳/LCD 小件 */
+  --blur: 0px;
+}
+[data-skin="cassette"][data-mode="light"] {
+  color-scheme: light;
+  --bg-app: #D9D7D2;
+  --bg-app-img: none;
+  --surface-1: #E8E6E1;          /* 面板 */
+  --surface-2: #FFFFFF;          /* 卡片/纸面 */
+  --surface-well: #CBC9C4;       /* 凹槽 */
+  --surface-hover: #F4F2EE;
+  --border-unit: rgba(28, 27, 25, 0.07);
+  --txt: #1C1B19; --dim: #6B6965; --faint: #96948F;
+  --accent: #FF4D00; --on-accent: #FFFFFF;
+  --ok: #00A651; --warn: #C77F00;
+  --lcd-bg: #2A2A26; --lcd-txt: #C8E6B0; --lcd-ok: #7CFF9B;
+  --shadow-unit: 0 1px 0 rgba(255,255,255,0.7) inset, 0 2px 6px rgba(28,27,25,0.12);
+  --shadow-key: inset 0 -2px 0 rgba(28,27,25,0.16), 0 1px 2px rgba(28,27,25,0.14);
+  --shadow-key-down: inset 0 1px 2px rgba(28,27,25,0.2);
+  --shadow-well: inset 0 1px 3px rgba(28,27,25,0.16);
+  --shadow-pop: 0 8px 28px rgba(28,27,25,0.18), 0 2px 6px rgba(28,27,25,0.12);
+  --track: rgba(28,27,25,0.15); --track-mark: rgba(28,27,25,0.5);
+  --line-soft: rgba(28,27,25,0.22); --line-faint: rgba(28,27,25,0.10);
+  --fill-active: rgba(28,27,25,0.08); --fill-hover: rgba(28,27,25,0.05);
+}
+[data-skin="cassette"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg-app: #161618;
+  --bg-app-img: none;
+  --surface-1: #222225;
+  --surface-2: #2D2D31;
+  --surface-well: #101012;
+  --surface-hover: #35353A;
+  --border-unit: rgba(255,255,255,0.055);
+  --txt: #E9E7E2; --dim: #9C9A95; --faint: #6C6A66;
+  --accent: #FF5D14; --on-accent: #FFFFFF;
+  --ok: #3ECF6E; --warn: #E8B53A;
+  --lcd-bg: #0E100D; --lcd-txt: #9FE080; --lcd-ok: #5DFF85;
+  --shadow-unit: 0 1px 0 rgba(255,255,255,0.06) inset, 0 3px 10px rgba(0,0,0,0.45);
+  --shadow-key: inset 0 -2px 0 rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07), 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-key-down: inset 0 2px 3px rgba(0,0,0,0.5);
+  --shadow-well: inset 0 1px 4px rgba(0,0,0,0.55);
+  --shadow-pop: 0 12px 36px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
+  --track: rgba(255,255,255,0.12); --track-mark: rgba(255,255,255,0.45);
+  --line-soft: rgba(255,255,255,0.22); --line-faint: rgba(255,255,255,0.09);
+  --fill-active: rgba(255,255,255,0.09); --fill-hover: rgba(255,255,255,0.05);
+}
+
+/* ============ 皮肤 B:流体玻璃(Apple Liquid Glass 2025 血统) ============ */
+[data-skin="glass"] {
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Inter', 'PingFang SC', 'Microsoft YaHei UI', sans-serif;
+  --font-data: 'JetBrains Mono', 'SF Mono', Menlo, ui-monospace, monospace;
+  --radius-unit: 26px;
+  --radius-item: 18px;
+  --radius-ctl: 999px;
+  --radius-field: 12px;
+  --radius-chip: 999px;
+  --blur: 40px;
+}
+[data-skin="glass"][data-mode="light"] {
+  color-scheme: light;
+  --bg-app: #E8ECF2;
+  --bg-app-img: linear-gradient(160deg, #DCE8F5 0%, #EEE7F2 35%, #F5EDE3 70%, #E3EEF0 100%);
+  --surface-1: rgba(255,255,255,0.55);
+  --surface-2: rgba(255,255,255,0.66);
+  --surface-well: rgba(255,255,255,0.4);
+  --surface-hover: rgba(255,255,255,0.88);
+  --border-unit: rgba(255,255,255,0.75);
+  --txt: #1D1D1F; --dim: rgba(29,29,31,0.6); --faint: rgba(29,29,31,0.35);
+  --accent: #0071E3; --on-accent: #FFFFFF;
+  --ok: #248A3D; --warn: #C93400;
+  --lcd-bg: rgba(255,255,255,0.55); --lcd-txt: rgba(29,29,31,0.65); --lcd-ok: #248A3D;
+  --shadow-unit: 0 1px 1px rgba(255,255,255,0.9) inset, 0 12px 40px rgba(60,70,110,0.12);
+  --shadow-key: 0 1px 0 rgba(255,255,255,0.8) inset, 0 2px 8px rgba(60,70,110,0.08);
+  --shadow-key-down: 0 1px 4px rgba(60,70,110,0.15) inset;
+  --shadow-well: 0 1px 3px rgba(60,70,110,0.08) inset;
+  --shadow-pop: 0 16px 48px rgba(60,70,110,0.2), 0 2px 8px rgba(60,70,110,0.1);
+  --track: rgba(29,29,31,0.08); --track-mark: rgba(29,29,31,0.3);
+  --line-soft: rgba(29,29,31,0.22); --line-faint: rgba(29,29,31,0.10);
+  --fill-active: rgba(29,29,31,0.08); --fill-hover: rgba(29,29,31,0.05);
+}
+[data-skin="glass"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg-app: #0D0F16;
+  --bg-app-img: linear-gradient(160deg, #101624 0%, #1A1426 35%, #221A20 70%, #0F1A22 100%);
+  --surface-1: rgba(28,30,40,0.55);
+  --surface-2: rgba(40,42,54,0.6);
+  --surface-well: rgba(10,12,18,0.45);
+  --surface-hover: rgba(58,60,76,0.7);
+  --border-unit: rgba(255,255,255,0.12);
+  --txt: #F5F5F7; --dim: rgba(245,245,247,0.6); --faint: rgba(245,245,247,0.32);
+  --accent: #409CFF; --on-accent: #FFFFFF;
+  --ok: #30D158; --warn: #FFD60A;
+  --lcd-bg: rgba(10,12,18,0.5); --lcd-txt: rgba(245,245,247,0.65); --lcd-ok: #30D158;
+  --shadow-unit: 0 1px 0 rgba(255,255,255,0.1) inset, 0 16px 50px rgba(0,0,0,0.5);
+  --shadow-key: 0 1px 0 rgba(255,255,255,0.1) inset, 0 2px 10px rgba(0,0,0,0.35);
+  --shadow-key-down: 0 1px 4px rgba(0,0,0,0.5) inset;
+  --shadow-well: 0 1px 3px rgba(0,0,0,0.4) inset;
+  --shadow-pop: 0 20px 60px rgba(0,0,0,0.6), 0 3px 10px rgba(0,0,0,0.45);
+  --track: rgba(255,255,255,0.12); --track-mark: rgba(255,255,255,0.35);
+  --line-soft: rgba(255,255,255,0.22); --line-faint: rgba(255,255,255,0.10);
+  --fill-active: rgba(255,255,255,0.10); --fill-hover: rgba(255,255,255,0.05);
+}
+
+/* ============ 共享刻度(与皮肤无关) ============ */
 :root {
-  /* 色板(锁死,禁止新增颜色) */
-  --panel:  #ECEAE4;  /* 面板米白 — 仪器外壳 */
-  --well:   #DCD9D0;  /* 凹槽灰 — 内容下沉井 */
-  --ink:    #2C2C2A;  /* 丝印炭 — 主文字 */
-  --scale:  #8A897F;  /* 刻度灰 — 次要文字/非活动 */
-  --signal: #D85A30;  /* 信号橙 — 唯一语义:注意力该在这里 */
-  --ready:  #5DAA6E;  /* 指示绿 — 仅就绪/完成,极小面积 */
-
-  /* 线条与状态底(ink 衍生,仅四档) */
-  --line-hard:  var(--ink);
-  --line-soft:  rgba(44, 44, 42, 0.25);
-  --line-faint: rgba(44, 44, 42, 0.12);
-  --fill-active: rgba(44, 44, 42, 0.10);
-  --fill-hover:  rgba(44, 44, 42, 0.06);
-
-  /* 语义别名:指示灯四态 */
-  --status-idle: var(--scale);        /* 灰=待命 */
-  --status-processing: var(--ink);    /* 炭呼吸=运转中 */
-  --status-ready: var(--ready);       /* 绿常亮=完成 */
-  --status-error: var(--signal);      /* 橙常亮(不呼吸)=需要人 */
-
-  /* 字体:等宽=机器 ASCII,无衬线=人话与所有中文 */
-  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, ui-monospace, monospace;
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', 'Source Han Sans SC', 'Noto Sans SC', sans-serif;
-
-  /* 字号五档,刻度外禁用
-     修宪(桌面App实测):原刻度 10/12/14/16/20 整体偏小,全刻度上移;
-     xs 仅限纯 ASCII 丝印与数字,承载中文的标签最低用 sm */
-  --text-xs: 11px; --text-sm: 13px; --text-base: 15px; --text-lg: 17px; --text-xl: 22px;
-
-  /* 字重两档 */
-  --weight-regular: 400; --weight-medium: 500;
-
-  /* 机器文字纪律 */
-  --tracking-machine: 0.08em; --tracking-machine-wide: 0.14em;
-
-  /* 行高 */
-  --leading-tight: 1.3; --leading-note: 1.8;
-
+  /* 字号六档;xs 仅限纯 ASCII 与数字,承载中文的正文标签最低 13,机壳小件允许 12 */
+  --text-xs: 11px; --text-sm: 13px; --text-base: 15px;
+  --text-lg: 17px; --text-xl: 22px; --text-2xl: 27px;
+  /* 字重:界面两档;--weight-display 给大标题(v4 起为无衬线粗体) */
+  --weight-regular: 400; --weight-medium: 500; --weight-display: 700;
+  --tracking-machine: 0.04em;
+  --tracking-display: -0.015em;
+  --leading-tight: 1.3; --leading-note: 1.9;
   /* 8px 网格(允许 4px 半格) */
   --space-half: 4px; --space-1: 8px; --space-2: 16px; --space-3: 24px;
   --space-4: 32px; --space-5: 40px; --space-6: 48px; --space-8: 64px;
-  --sidebar-w: 240px;
-
-  /* 圆角三档 */
-  --radius: 6px; --radius-sm: 3px; --radius-round: 999px;
-
-  /* 动效:机械急停,禁止弹簧
-     修宪(动效修正案):允许一次性动效,急停 easing,时长 ≤200ms;
-     循环动画仍仅呼吸灯。--dur-slow 用于入场/波形生长等较大位移 */
+  --sidebar-w: 280px;
+  --frame-pad: 14px; /* 机壳外框:窗口边缘与面板的间距 */
+  /* 动效:急停 easing,一次性动效 ≤200ms;循环动画仍仅呼吸灯 */
   --dur: 120ms;
   --dur-slow: 180ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --ease-linear: linear;
 }
 
+/* ============ v3 兼容别名层(旧组件语义 → v4 物理 token) ============
+   屏组件继续写 var(--ink)/var(--paper) 等旧名,由这里翻译;新代码请直接用 v4 token。 */
+:root, [data-skin] {
+  --paper: var(--surface-2);
+  --panel: var(--surface-1);
+  --well: var(--surface-well);
+  --ink: var(--txt);
+  --scale: var(--dim);
+  --signal: var(--accent);
+  --ready: var(--ok);
+  --line-hard: var(--txt);
+  --status-idle: var(--dim);
+  --status-processing: var(--txt);
+  --status-ready: var(--ok);
+  --status-error: var(--accent);
+  --font-serif: var(--font-ui); /* v4 废止衬线:旧引用自动落到 UI 字体 */
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-data);
+  --radius: var(--radius-ctl-menu, 8px);
+  --radius-sm: 5px;
+  --radius-round: 999px;
+}
+[data-skin="cassette"] { --radius-ctl-menu: 8px; }
+[data-skin="glass"] { --radius-ctl-menu: 14px; --radius-sm: 8px; }
+
+/* ============ 皮肤结构类(同一 DOM,皮肤决定形态) ============ */
+/* 机壳面板:侧栏与主区各是一块 unit */
+.pn-unit {
+  background: var(--surface-1);
+  border: 1px solid var(--border-unit);
+  border-radius: var(--radius-unit);
+  box-shadow: var(--shadow-unit);
+}
+[data-skin="glass"] .pn-unit { backdrop-filter: blur(var(--blur)) saturate(1.6); }
+
+/* 卡片(列表项/引语块/浮层内容) */
+.pn-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border-unit);
+  border-radius: var(--radius-item);
+  box-shadow: var(--shadow-key);
+}
+/* 选中态:磁带机 = 左缘 accent 墨条(inset,不位移);玻璃 = accent 描边圈 */
+[data-skin="cassette"] .pn-item-active { box-shadow: inset 3px 0 0 var(--accent), var(--shadow-key); }
+[data-skin="glass"] .pn-item-active { outline: 2.5px solid var(--accent); outline-offset: -1px; }
+
+/* 播放器:磁带机 = 通栏走带台;玻璃 = 底部悬浮胶囊 */
+.pn-player {
+  display: flex; align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-unit);
+  box-shadow: var(--shadow-unit);
+  box-sizing: border-box;
+}
+[data-skin="cassette"] .pn-player {
+  margin: 0 16px 14px; padding: 10px 14px; gap: 14px;
+  border-radius: var(--radius-item);
+}
+[data-skin="glass"] .pn-player {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  width: min(640px, calc(100% - 48px)); padding: 8px 18px 8px 8px; gap: 12px;
+  border-radius: 999px; z-index: 4;
+  backdrop-filter: blur(var(--blur)) saturate(1.6);
+}
+/* 玻璃皮肤播放器悬浮在阅读井上:给滚动内容留出胶囊高度 */
+[data-skin="glass"] [data-reader-scroll] { padding-bottom: 76px; }
+
+/* 抽屉(问答/核查):主区 unit 内的右侧第三栏,左中右并排,永不覆盖正文 */
+.pn-drawer {
+  flex: none;
+  background: var(--surface-1);
+  border-left: 1px solid var(--border-unit);
+  box-sizing: border-box;
+  display: flex; flex-direction: column; min-height: 0;
+}
+[data-skin="glass"] .pn-drawer { backdrop-filter: blur(var(--blur)) saturate(1.6); }
+
+/* LCD 机读屏:磁带机 = 荧光屏;玻璃 = 半透明胶囊 */
+.pn-lcd {
+  background: var(--lcd-bg); color: var(--lcd-txt);
+  font-family: var(--font-data); font-size: var(--text-xs);
+  letter-spacing: var(--tracking-machine); font-variant-numeric: tabular-nums;
+  border-radius: var(--radius-chip);
+  padding: 7px 14px; box-shadow: var(--shadow-well);
+  display: inline-flex; gap: 14px; align-items: center;
+  min-width: 0; box-sizing: border-box;
+}
+[data-skin="glass"] .pn-lcd { backdrop-filter: blur(20px); }
+
+/* ============ 动效 ============ */
 /* 指示灯呼吸 — 全 App 唯一允许的循环动画 */
 @keyframes pn-breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
-
-/* 一次性动效(动效修正案) */
 @keyframes pn-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes pn-fade  { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pn-pop   { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.35); } }
 @keyframes pn-flash { 0%, 100% { background: transparent; } 40% { background: var(--fill-active); } }
 
-/* 全局按压反馈:所有按钮按下 1px 急停(机械键程) */
+/* 全局按压反馈:所有按钮按下 1px 急停(机械键程手感) */
 button:active, [role="button"]:active { transform: translateY(1px); }
 
+/* 主题切换:新主题从屏幕中心圆形扩散铺开(View Transitions;不支持的引擎瞬时切换)。
+   这是"换外观"的仪式性动效,一次性、非循环,不违反循环动画禁令。 */
+@keyframes pn-theme-reveal {
+  from { clip-path: circle(0 at 50% 50%); }
+  to { clip-path: circle(75vmax at 50% 50%); }
+}
+::view-transition-old(root) { animation: none; }
+::view-transition-new(root) { animation: pn-theme-reveal 480ms var(--ease); }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
+}
+
+/* ============ 基础 ============ */
 html, body { margin: 0; height: 100%; }
 body {
-  background: var(--panel);
-  font-family: var(--font-sans);
-  color: var(--ink);
+  background: var(--bg-app);
+  background-image: var(--bg-app-img);
+  background-attachment: fixed;
+  font-family: var(--font-ui);
+  color: var(--txt);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow: hidden; /* 桌面 App:窗口即界面,不滚动 body */
+  transition: background-color var(--dur-slow) var(--ease), color var(--dur-slow) var(--ease);
 }
 #root { height: 100vh; }
 
-a { color: var(--ink); text-decoration-color: var(--signal); text-underline-offset: 2px; }
-a:hover { color: var(--signal); }
-/* 修宪(划词纠正实测):原 --well 选中色与阅读井底色相同,选区隐形;改用 line-soft 档 */
-::selection { background: var(--line-soft); color: var(--ink); }
+a { color: var(--txt); text-decoration-color: var(--accent); text-underline-offset: 2px; }
+a:hover { color: var(--accent); }
+::selection { background: var(--line-soft); color: var(--txt); }
 button { font: inherit; color: inherit; }
 button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
-  outline: 2px solid var(--ink); outline-offset: 2px;
+  outline: 2px solid var(--accent); outline-offset: 2px;
 }
+/* 细滚动条:平台默认滚动条太重,会把仪器打回 WebView */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--track); border-radius: 999px; background-clip: padding-box; border: 2px solid transparent; }
+::-webkit-scrollbar-thumb:hover { background: var(--track-mark); background-clip: padding-box; border: 2px solid transparent; }
+::-webkit-scrollbar-track { background: transparent; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }

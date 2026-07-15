@@ -1,7 +1,8 @@
-// 设计系统·instrument 族 — 移植自「Podnote 正式设计 standalone.html」内嵌组件库
+// 设计系统·instrument 族 — 宪法 v4「双皮肤仪器」
+// 指示灯四态与波形是历代保留的产品之魂;时间戳是可按的机读芯片,列表项是一盘磁带卡片
 import { useEffect, useRef, useState } from "react";
 
-/** 丝印状态词。tone 控制墨色;中文标签最低 12px(sm),纯 ASCII 丝印可用 xs。 */
+/** 栏目眉:小号无衬线标签,宽字距;tone 控制墨色。 */
 export function StatusLabel({ children, tone = "default", size = "sm", style }) {
   const color = {
     default: "var(--ink)", dim: "var(--scale)",
@@ -9,18 +10,17 @@ export function StatusLabel({ children, tone = "default", size = "sm", style }) 
   }[tone];
   return (
     <span style={{
-      fontFamily: "var(--font-mono)",
+      fontFamily: "var(--font-sans)",
       fontSize: size === "sm" ? "var(--text-sm)" : "var(--text-xs)",
       fontWeight: "var(--weight-medium)",
-      letterSpacing: "var(--tracking-machine-wide)",
-      textTransform: "uppercase",
+      letterSpacing: "0.06em",
       fontVariantNumeric: "tabular-nums",
       color, ...style,
     }}>{children}</span>
   );
 }
 
-/** 仪器指示灯四态:灰=待命 / 炭呼吸=运转中 / 绿常亮=完成 / 橙常亮(不呼吸)=需要人。 */
+/** 指示灯四态:灰=待命 / 墨呼吸=运转中 / 绿常亮=完成 / 朱红常亮(不呼吸)=需要人。 */
 export function IndicatorLight({ status = "off", label, style }) {
   const colors = {
     off: "var(--status-idle)",
@@ -40,7 +40,7 @@ export function IndicatorLight({ status = "off", label, style }) {
       <span
         onAnimationEnd={() => setPop(false)}
         style={{
-          width: 8, height: 8, flex: "none", borderRadius: "var(--radius-round)",
+          width: 7, height: 7, flex: "none", borderRadius: "var(--radius-round)",
           background: colors[status],
           opacity: status === "off" ? 0.5 : 1,
           transition: "background var(--dur) var(--ease)",
@@ -49,9 +49,8 @@ export function IndicatorLight({ status = "off", label, style }) {
         }} />
       {label && (
         <span style={{
-          fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
+          fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)",
           fontWeight: "var(--weight-medium)",
-          letterSpacing: "var(--tracking-machine)", textTransform: "uppercase",
           fontVariantNumeric: "tabular-nums",
           color: status === "error" ? "var(--signal)"
             : status === "off" ? "var(--scale)" : "var(--ink)",
@@ -61,10 +60,10 @@ export function IndicatorLight({ status = "off", label, style }) {
   );
 }
 
-/** 时间戳 = 磁带计数器。等宽数字胶囊,点击回跳,激活态信号橙。 */
+/** 时间戳 = 可按的机读小芯片。凹槽底 + 等宽数字;悬停/激活转 accent;点击闪现一次=指令已执行。 */
 export function Timestamp({ time, active = false, onSeek, style }) {
   const [hover, setHover] = useState(false);
-  const [flash, setFlash] = useState(false); // 点击后闪现一次:指令已执行
+  const [flash, setFlash] = useState(false);
   return (
     <button
       onClick={(e) => { setFlash(true); onSeek?.(e); }}
@@ -73,22 +72,23 @@ export function Timestamp({ time, active = false, onSeek, style }) {
       onMouseLeave={() => setHover(false)}
       style={{
         animation: flash ? "pn-flash var(--dur-slow) var(--ease)" : "none",
-        fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
-        fontWeight: "var(--weight-regular)",
+        fontFamily: "var(--font-data)", fontSize: "var(--text-xs)",
+        fontWeight: "var(--weight-medium)",
         letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
-        color: active ? "var(--signal)" : hover ? "var(--ink)" : "var(--scale)",
-        background: "transparent",
-        border: active ? "1px solid var(--signal)" : "1px solid var(--line-soft)",
-        borderRadius: "var(--radius-round)",
-        padding: "1px 10px 2px", cursor: "pointer",
-        transition: "color var(--dur) var(--ease), border-color var(--dur) var(--ease)",
+        color: active ? "var(--on-accent)" : hover ? "var(--accent)" : "var(--dim)",
+        background: active ? "var(--accent)" : "var(--surface-well)",
+        border: "none",
+        borderRadius: "var(--radius-chip)",
+        boxShadow: active ? "var(--shadow-key)" : "var(--shadow-well)",
+        padding: "2px 7px", cursor: "pointer", flex: "none",
+        transition: "color var(--dur) var(--ease), background var(--dur) var(--ease)",
         ...style,
       }}
     >{time}</button>
   );
 }
 
-/** 剧集列表项 = 磁带盒。节目名无衬线(中文禁入等宽),日期等宽,状态灯 + 时长/耗时。 */
+/** 剧集列表项 = 一盘磁带/一块卡片。选中态由皮肤决定:磁带机左缘 accent 墨条,玻璃 accent 描边圈。 */
 export function EpisodeItem({
   date, show, title, duration, status = "ready", statusLabel,
   active = false, errReason, onClick, onContextMenu, style,
@@ -98,35 +98,39 @@ export function EpisodeItem({
   return (
     <div
       role="button" tabIndex={0}
+      className={`pn-card${active ? " pn-item-active" : ""}`}
       onClick={onClick}
       onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        background: active ? "var(--fill-active)" : hover ? "var(--fill-hover)" : "var(--well)",
-        border: active ? "1px solid var(--ink)" : "1px solid var(--line-soft)",
-        borderRadius: "var(--radius)",
-        padding: "8px 12px", cursor: "pointer", boxSizing: "border-box",
-        transition: "border-color var(--dur) var(--ease), background var(--dur) var(--ease)",
+        position: "relative",
+        ...(hover && !active ? { background: "var(--surface-hover)" } : null),
+        padding: "11px 13px", cursor: "pointer", boxSizing: "border-box",
+        transition: "background var(--dur) var(--ease)",
         ...style,
       }}
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span style={{
-          fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--scale)",
+          fontFamily: "var(--font-ui)", fontSize: "var(--text-xs)",
+          fontWeight: "var(--weight-medium)",
+          color: active ? "var(--accent)" : "var(--dim)",
           flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          transition: "color var(--dur) var(--ease)",
         }}>{show}</span>
         <span style={{
-          fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
+          fontFamily: "var(--font-data)", fontSize: "var(--text-xs)",
           letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
-          color: "var(--scale)", flex: "none",
+          color: "var(--faint)", flex: "none",
         }}>{date}</span>
       </div>
       <div style={{
-        fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
-        fontWeight: "var(--weight-medium)", color: "var(--ink)",
-        lineHeight: "var(--leading-tight)", margin: "4px 0",
+        fontFamily: "var(--font-ui)", fontSize: "var(--text-sm)",
+        fontWeight: active ? "var(--weight-medium)" : "var(--weight-regular)",
+        color: "var(--txt)",
+        lineHeight: 1.45, margin: "5px 0 4px",
         display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
       }}>{title}</div>
       {status === "error" && errReason && (
@@ -147,13 +151,15 @@ export function EpisodeItem({
   );
 }
 
-/** 波形刻度条 = 真进度条。已播=丝印炭,未播=刻度灰,笔记锚点=信号橙(只上核心观点)。
+/** 波形刻度条 = 真进度条。已播=油墨,未播=铅灰,笔记锚点=朱红(只上核心观点)。
     bars 必须是真实峰值(Web Audio 解码);没有就诚实地画均匀低矮刻度,
     真峰值到位时逐条生长成型(transition-delay 从左到右扫过,像仪器校准)。 */
 export function Waveform({ bars, progress = 0, anchors = [], height = 40, onSeek, style }) {
   const pending = !(bars && bars.length);
   const data = pending ? PENDING_BARS : bars;
   const n = data.length;
+  // 唯一的朱红锚点 = 播放位置所在章节;其余锚点退为墨色刻度(强调色不许当装饰用)
+  const activeAnchor = anchors.reduce((acc, a) => (a <= progress && a > acc ? a : acc), -1);
   return (
     <div
       onClick={(e) => {
@@ -167,15 +173,17 @@ export function Waveform({ bars, progress = 0, anchors = [], height = 40, onSeek
     >
       {data.map((v, i) => {
         const frac = i / n;
-        const isAnchor = anchors.some((a) => Math.abs(a - frac) < 0.5 / n);
+        const anchorAt = anchors.find((a) => Math.abs(a - frac) < 0.5 / n);
+        const isAnchor = anchorAt !== undefined;
+        const isActiveAnchor = isAnchor && activeAnchor >= 0 && Math.abs(anchorAt - activeAnchor) < 0.5 / n;
         const played = frac <= progress;
         return (
           <span key={i} style={{
             flex: 1, minWidth: 1, maxWidth: isAnchor ? 2 : 3,
-            /* 锚点=橙色刻度:半高降噪(真实笔记 10+ 锚点时全高会变圣诞树) */
-            height: isAnchor ? "55%" : pending ? "12%" : `${Math.round(v * 70)}%`,
-            background: isAnchor ? "var(--signal)" : played ? "var(--ink)" : "var(--scale)",
-            opacity: isAnchor || played ? 1 : pending ? 0.35 : 0.5,
+            /* 锚点刻度:只有当前章节的锚点用朱红,其余是墨色小刻度 */
+            height: isAnchor ? "38%" : pending ? "12%" : `${Math.round(v * 70)}%`,
+            background: isActiveAnchor ? "var(--signal)" : isAnchor ? "var(--ink)" : played ? "var(--ink)" : "var(--scale)",
+            opacity: isActiveAnchor ? 1 : isAnchor ? 0.4 : played ? 1 : pending ? 0.3 : 0.45,
             borderRadius: 1,
             /* 生长只延迟 height:进度颜色翻转不跟着拖泥带水 */
             transition: `height var(--dur-slow) var(--ease) ${i * 3}ms, background var(--dur) var(--ease), opacity var(--dur) var(--ease)`,

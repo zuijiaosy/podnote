@@ -25,7 +25,7 @@ function ToolCard({ item }) {
   const status = item.status === "running" ? "processing" : item.status === "done" ? "ready" : "error";
   return (
     <div style={{
-      background: "var(--panel)", border: "1px solid var(--line-soft)",
+      background: "var(--paper)", border: "1px solid var(--line-faint)",
       borderRadius: "var(--radius)", padding: "8px 12px", boxSizing: "border-box",
       display: "flex", flexDirection: "column", gap: 8,
       animation: "pn-pop var(--dur) var(--ease) both",
@@ -135,7 +135,7 @@ function SuggestionRow({ item, state, onApply }) {
  * session: {reqId, blockCount, status, timeline, items, error}(lib/research.js)
  * onApply(original, corrected, evidenceUrl, confidence) → 替换处数(App 的 onApplyCorrection)
  */
-export function ResearchDrawer({ session, onAbort, onClose, onApply }) {
+export function ResearchDrawer({ session, onAbort, onClose, onApply, style }) {
   const scrollRef = useRef(null);
   const [applyMap, setApplyMap] = useState({}); // original → {phase, msg}
   const [bulk, setBulk] = useState(false);
@@ -172,10 +172,10 @@ export function ResearchDrawer({ session, onAbort, onClose, onApply }) {
     : ["error", "出错"];
 
   return (
-    <div style={{
-      flex: "none", width: 440, background: "var(--well)", borderRadius: "var(--radius)",
-      boxSizing: "border-box", display: "flex", flexDirection: "column", minHeight: 0,
+    <div className="pn-drawer" style={{
+      width: "clamp(320px, 34%, 420px)",
       animation: "pn-enter var(--dur-slow) var(--ease) both",
+      ...style,
     }}>
       <div style={{
         flex: "none", display: "flex", alignItems: "center", gap: 12,

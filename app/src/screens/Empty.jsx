@@ -7,7 +7,7 @@ export function Empty({ selfCheck = { asrKey: false, llmKey: false, llmGateway: 
   const allReady = selfCheck.asrKey && selfCheck.llmKey && selfCheck.llmGateway;
   return (
     <div style={{
-      flex: 1, minWidth: 0, background: "var(--well)", borderRadius: "var(--radius)",
+      flex: 1, minWidth: 0,
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 32,
     }}>
       <div style={{ display: "flex", gap: 24 }}>
@@ -19,7 +19,10 @@ export function Empty({ selfCheck = { asrKey: false, llmKey: false, llmGateway: 
         <>
           <Button variant="knob" size="lg" onClick={onAdd} aria-label="添加第一集">开始</Button>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-lg)", color: "var(--ink)" }}>
+            <span style={{
+              fontFamily: "var(--font-serif)", fontSize: "var(--text-xl)",
+              letterSpacing: "var(--tracking-display)", color: "var(--ink)",
+            }}>
               粘贴一个小宇宙链接,开始。
             </span>
             <StatusLabel tone="dim">支持小宇宙单集链接</StatusLabel>
@@ -28,8 +31,11 @@ export function Empty({ selfCheck = { asrKey: false, llmKey: false, llmGateway: 
       ) : (
         <>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, maxWidth: 380, textAlign: "center" }}>
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-lg)", color: "var(--ink)" }}>
-              先配好钥匙和网关,仪器才能开机。
+            <span style={{
+              fontFamily: "var(--font-serif)", fontSize: "var(--text-xl)",
+              letterSpacing: "var(--tracking-display)", color: "var(--ink)",
+            }}>
+              先配好钥匙和网关,再开始。
             </span>
             <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--scale)", lineHeight: "var(--leading-note)" }}>
               转写走阿里百炼,笔记走你自己指定的 LLM 网关。密钥只存在本机。

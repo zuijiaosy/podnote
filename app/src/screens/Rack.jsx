@@ -1,33 +1,43 @@
-// 磁带架(左栏) — 布局与「Podnote 正式设计 standalone.html」一致
+// 磁带架(左栏) — 宪法 v4「双皮肤仪器」:机壳面板 + 卡片式磁带
 // 收件箱模型:架顶「未读|已归档」分段视图控件(视图+计数合一),
 // 频道条只管过滤,手动添加收成紧凑键(订阅时代它是低频动作),页脚只留设置
 import { useEffect, useRef, useState } from "react";
-import { Button } from "../components/core.jsx";
+import { Button, Segmented } from "../components/core.jsx";
 import { StatusLabel, EpisodeItem } from "../components/instrument.jsx";
 
-/** 频道筛选片:mono 小字,带未读数;长名单行省略号截断,悬停见全名 */
+/** 频道筛选片:凹槽/浮键同一套仪器语言;选中 = 浮起的键,带未读数;长名截断悬停见全名 */
 function Chip({ label, count = 0, active, onClick, onContextMenu }) {
+  const [hover, setHover] = useState(false);
   return (
     <button
       onClick={onClick}
       onContextMenu={onContextMenu}
       title={label}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
-        display: "flex", alignItems: "center", gap: 4, maxWidth: "100%", minWidth: 0,
-        fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
-        letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
-        padding: "3px 8px", cursor: "pointer",
-        background: active ? "var(--fill-active)" : "none",
-        border: active ? "1px solid var(--ink)" : "1px solid var(--line-soft)",
-        borderRadius: "var(--radius-sm)",
-        color: active ? "var(--ink)" : "var(--scale)",
-        transition: "border-color var(--dur) var(--ease), color var(--dur) var(--ease)",
+        display: "flex", alignItems: "center", gap: 5, maxWidth: "100%", minWidth: 0,
+        fontFamily: "var(--font-ui)", fontSize: "var(--text-sm)",
+        fontWeight: active ? "var(--weight-medium)" : "var(--weight-regular)",
+        fontVariantNumeric: "tabular-nums",
+        padding: "2px 10px 3px", cursor: "pointer",
+        background: active ? "var(--surface-2)" : hover ? "var(--fill-hover)" : "transparent",
+        border: "none",
+        borderRadius: "var(--radius-ctl)",
+        boxShadow: active ? "var(--shadow-key)" : "none",
+        color: active ? "var(--txt)" : "var(--dim)",
+        transition: "background var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease)",
       }}
     >
       <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {label}
       </span>
-      {count > 0 && <span style={{ flex: "none" }}>{count}</span>}
+      {count > 0 && (
+        <span style={{
+          flex: "none", fontFamily: "var(--font-data)", fontSize: "var(--text-xs)",
+          color: active ? "var(--accent)" : "var(--faint)",
+        }}>{count}</span>
+      )}
     </button>
   );
 }
@@ -69,7 +79,8 @@ function RackMenu({ menu, onClose }) {
       onContextMenu={(e) => e.preventDefault()}
       style={{
         position: "absolute", top: menu.top, left: menu.left, zIndex: 3, minWidth: 150, maxWidth: 220,
-        background: "var(--panel)", border: "1px solid var(--line-soft)",
+        background: "var(--paper)", border: "1px solid var(--line-faint)",
+        boxShadow: "var(--shadow-pop)",
         borderRadius: "var(--radius)", padding: 4, boxSizing: "border-box",
         display: "flex", flexDirection: "column",
         animation: "pn-pop var(--dur) var(--ease) both",
@@ -100,32 +111,17 @@ function RackMenu({ menu, onClose }) {
   );
 }
 
-/** 视图分段控件:未读 N | 已归档 M —— 当前视图与计数一眼可见 */
+/** 视图分段控件:未读 N | 已归档 M —— 凹槽轨道 + 浮起选中键,当前视图与计数一眼可见 */
 function ViewSwitch({ showArchived, unread, archived, onToggle }) {
-  const cell = (active) => ({
-    flex: 1, padding: "5px 0", textAlign: "center",
-    fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
-    letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
-    cursor: active ? "default" : "pointer", userSelect: "none",
-    background: active ? "var(--fill-active)" : "transparent",
-    color: active ? "var(--ink)" : "var(--scale)",
-    border: active ? "1px solid var(--ink)" : "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
-    transition: "background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease)",
-  });
   return (
-    <div style={{
-      display: "flex", gap: 4, padding: 3,
-      background: "var(--panel)", border: "1px solid var(--line-soft)",
-      borderRadius: "var(--radius)", boxSizing: "border-box",
-    }}>
-      <button style={cell(!showArchived)} onClick={() => showArchived && onToggle()}>
-        未读 {unread}
-      </button>
-      <button style={cell(showArchived)} onClick={() => !showArchived && onToggle()}>
-        已归档 {archived}
-      </button>
-    </div>
+    <Segmented
+      options={[
+        { value: "unread", label: `未读 ${unread}` },
+        { value: "archived", label: `已归档 ${archived}` },
+      ]}
+      value={showArchived ? "archived" : "unread"}
+      onChange={() => onToggle()}
+    />
   );
 }
 
@@ -156,23 +152,30 @@ export function Rack({
   return (
     <div
       ref={rootRef}
+      className="pn-unit"
       onMouseDown={() => { if (menu) setMenu(null); }}
       style={{
         width: "var(--sidebar-w)", flex: "none", position: "relative",
-        background: "var(--well)", borderRadius: "var(--radius)",
         display: "flex", flexDirection: "column", overflow: "hidden",
       }}>
       {menu && <RackMenu menu={menu} onClose={() => setMenu(null)} />}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 16px 8px", boxSizing: "border-box" }}>
-        <StatusLabel>PODNOTE</StatusLabel>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 16px 10px", boxSizing: "border-box" }}>
+        <span style={{
+          fontFamily: "var(--font-ui)", fontSize: "var(--text-base)",
+          fontWeight: "var(--weight-display)", letterSpacing: "-0.01em", color: "var(--txt)",
+        }}>Podnote</span>
+        <span style={{
+          fontFamily: "var(--font-data)", fontSize: 9,
+          letterSpacing: "0.12em", color: "var(--faint)", marginTop: 2,
+        }}>TAPE ARCHIVE</span>
         <span style={{ flex: 1 }} />
         {inboxMode ? (
-          <Button variant="secondary" size="sm" onClick={onAdd}>+ 添加</Button>
+          <Button variant="knob" size="sm" onClick={onAdd}>＋ 添加</Button>
         ) : (
           <span style={{
-            fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
+            fontFamily: "var(--font-data)", fontSize: "var(--text-sm)",
             letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
-            color: "var(--scale)",
+            color: "var(--dim)",
           }}>{episodes.length} 盘磁带</span>
         )}
       </div>
@@ -182,7 +185,7 @@ export function Rack({
         </div>
       )}
       {inboxMode && (
-        <div style={{ padding: "4px 16px 8px", boxSizing: "border-box" }}>
+        <div style={{ padding: "4px 16px 10px", boxSizing: "border-box" }}>
           <ViewSwitch
             showArchived={showArchived}
             unread={unreadCount}
@@ -200,7 +203,7 @@ export function Rack({
         }
         const hidden = shows.length - visible.length;
         return (
-          <div style={{ padding: "0 16px 8px", boxSizing: "border-box", display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div style={{ padding: "0 16px 14px", boxSizing: "border-box", display: "flex", flexWrap: "wrap", gap: "4px 6px" }}>
             <Chip label="全部" count={0} active={!filterShow} onClick={() => onFilterShow?.(null)} />
             {visible.map((s) => (
               <Chip key={s.name} label={s.name} count={s.unread}
@@ -223,8 +226,8 @@ export function Rack({
         /* 视图/筛选切换时重挂载,触发列表逐条扫入 */
         key={`${showArchived}|${filterShow ?? ""}`}
         style={{
-          flex: 1, minHeight: 0, overflow: "auto", padding: "4px 16px 16px",
-          display: "flex", flexDirection: "column", gap: 8,
+          flex: 1, minHeight: 0, overflow: "auto", padding: "6px 12px 14px",
+          display: "flex", flexDirection: "column", gap: 9,
         }}>
         {episodes.length === 0 && (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -258,11 +261,11 @@ export function Rack({
           />
         ))}
       </div>
-      <div style={{ borderTop: "1px solid var(--line-faint)", padding: 8, display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ borderTop: "1px solid var(--line-faint)", padding: 8, display: "flex", alignItems: "center", gap: 4 }}>
         {onSubs && (
-          <Button variant="ghost" size="md" onClick={onSubs} style={{ flex: 1, textAlign: "left" }}>订阅</Button>
+          <Button variant="ghost" size="md" onClick={onSubs}>订阅</Button>
         )}
-        <Button variant="ghost" size="md" onClick={onSettings} style={{ flex: 1, textAlign: "left" }}>设置</Button>
+        <Button variant="ghost" size="md" onClick={onSettings}>设置</Button>
       </div>
     </div>
   );

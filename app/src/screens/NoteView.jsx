@@ -1,8 +1,8 @@
-// 右侧主视图:仪表头 + 阅读井(NOTES/TRANSCRIPT 双 tab) + 播放器
-// 布局与「Podnote 正式设计 standalone.html」一致;who 归属为宪法 v2 修正新增
+// 右侧主视图:LCD 机读屏抬头 + 阅读井(笔记/字幕双 tab) + 播放器(磁带机走带台/玻璃悬浮胶囊)
+// 宪法 v4「双皮肤仪器」;who 归属为宪法 v2 修正新增
 // 划词纠正:选中可疑词 → 浮层核实(LLM+搜索) → 确认替换全文;纠正过的词虚线下划线可溯源
 import { useEffect, useRef, useState } from "react";
-import { Button, Checkbox } from "../components/core.jsx";
+import { Button, Checkbox, Segmented } from "../components/core.jsx";
 import { StatusLabel, IndicatorLight, Timestamp, Waveform } from "../components/instrument.jsx";
 import { Transcript } from "./Transcript.jsx";
 import { ResearchDrawer } from "./ResearchDrawer.jsx";
@@ -71,7 +71,8 @@ function ContextMenu({ menu, onVerify, onAsk, onVerifyBlocks, onClearPicks, onCl
       onContextMenu={(e) => e.preventDefault()}
       style={{
         position: "absolute", top: menu.top, left: menu.left, zIndex: 3, minWidth: 160,
-        background: "var(--panel)", border: "1px solid var(--line-soft)",
+        background: "var(--paper)", border: "1px solid var(--line-faint)",
+        boxShadow: "var(--shadow-pop)",
         borderRadius: "var(--radius)", padding: 4, boxSizing: "border-box",
         display: "flex", flexDirection: "column",
         animation: "pn-pop var(--dur) var(--ease) both",
@@ -115,7 +116,8 @@ function CorrectionPopover({ sel, phase, verdict, err, applyMsg, onResearch, onA
       onMouseUp={(e) => e.stopPropagation()}
       style={{
         position: "absolute", top: sel.top, left: sel.left, width: 320, zIndex: 3,
-        background: "var(--panel)", border: "1px solid var(--line-soft)",
+        background: "var(--paper)", border: "1px solid var(--line-faint)",
+        boxShadow: "var(--shadow-pop)",
         borderRadius: "var(--radius)", padding: "12px 16px", boxSizing: "border-box",
         display: "flex", flexDirection: "column", gap: 8,
         animation: "pn-pop var(--dur) var(--ease) both",
@@ -194,16 +196,19 @@ function Who({ name }) {
 
 function SectionHead({ idx, title }) {
   return (
-    <div style={{ marginTop: 40, display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ marginTop: 48, display: "flex", alignItems: "center", gap: 10 }}>
       <span style={{
-        fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
-        letterSpacing: "var(--tracking-machine-wide)", color: "var(--scale)",
+        fontFamily: "var(--font-data)", fontSize: 10, fontWeight: "var(--weight-medium)",
+        letterSpacing: "var(--tracking-machine)",
+        background: "var(--accent)", color: "var(--on-accent)",
+        padding: "2px 7px", borderRadius: "var(--radius-chip)", flex: "none",
       }}>{idx}</span>
       <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
-        fontWeight: "var(--weight-medium)", color: "var(--ink)",
+        fontFamily: "var(--font-ui)", fontSize: "var(--text-lg)",
+        fontWeight: "var(--weight-display)", color: "var(--txt)",
+        letterSpacing: "var(--tracking-display)",
       }}>{title}</span>
-      <span style={{ flex: 1, height: 1, background: "var(--line-faint)" }} />
+      <span style={{ flex: 1, borderTop: "1px dashed var(--track)", alignSelf: "center" }} />
     </div>
   );
 }
@@ -216,47 +221,49 @@ function Console({ ep, onToggleRead, tts, onToggleTts, onCycleTtsRate, onToggleQ
     || { ready: "READY", processing: "WORKING", error: "ERROR", off: "QUEUED" }[ep.status];
   return (
     <div style={{
-      flex: "none", background: "var(--well)", borderRadius: "var(--radius)",
-      padding: "16px 24px", boxSizing: "border-box",
-      display: "flex", flexDirection: "column", gap: 8,
+      flex: "none", padding: "18px 28px 12px", boxSizing: "border-box",
+      display: "flex", flexDirection: "column", gap: 10,
       animation: "pn-enter var(--dur-slow) var(--ease) both",
     }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--scale)" }}>{ep.show}</span>
-        <span style={{ flex: 1 }} />
-        <span style={{
-          fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
-          letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums", color: "var(--scale)",
-        }}>{ep.date}</span>
-      </div>
-      <div style={{
-        fontFamily: "var(--font-sans)", fontSize: "var(--text-xl)",
-        fontWeight: "var(--weight-medium)", color: "var(--ink)", lineHeight: "var(--leading-tight)",
-      }}>{ep.title}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <IndicatorLight status={ep.status} label={statusLabel} />
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        {/* LCD 机读屏:节目/日期/时长/状态,全部机器数据一屏读出 */}
+        <span className="pn-lcd" style={{ flex: "0 1 auto" }}>
+          <span style={{
+            fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: "var(--weight-medium)",
+            minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }} title={ep.show}>{ep.show}</span>
+          <span style={{ flex: "none" }}>{ep.date}</span>
+          <span style={{ flex: "none" }}>{ep.duration}</span>
+          <span style={{
+            flex: "none",
+            color: ep.status === "ready" ? "var(--lcd-ok)" : ep.status === "error" ? "var(--accent)" : "inherit",
+            animation: ep.status === "processing" ? "pn-breathe 2s linear infinite" : "none",
+          }}>● {statusLabel}</span>
+        </span>
         <span style={{ flex: 1 }} />
         {ep.status === "ready" && (
           <>
             {onToggleQa && (
-              <Button variant="ghost" size="sm" onClick={() => onToggleQa()}>问答</Button>
+              <Button variant="secondary" size="sm" onClick={() => onToggleQa()}>问答</Button>
             )}
             {(tts?.playing || tts?.waiting) && (
-              <Button variant="ghost" size="sm" onClick={() => onCycleTtsRate?.()}>
+              <Button variant="secondary" size="sm" onClick={() => onCycleTtsRate?.()}>
                 {`${tts?.rate ?? 1.5}×`}
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={() => onToggleTts?.()}>{ttsLabel}</Button>
+            <Button variant="secondary" size="sm" onClick={() => onToggleTts?.()}>{ttsLabel}</Button>
           </>
         )}
-        <Button variant="ghost" size="sm" title="快捷键 E" onClick={() => onToggleRead?.()}>
+        <Button variant={ep.readAt ? "secondary" : "knob"} size="sm" title="快捷键 E" onClick={() => onToggleRead?.()}>
           {ep.readAt ? "已归档 · 撤销" : "归档"}
         </Button>
-        <span style={{
-          fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
-          letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums", color: "var(--scale)",
-        }}>{ep.duration}</span>
       </div>
+      <div style={{
+        fontFamily: "var(--font-ui)", fontSize: "var(--text-xl)",
+        fontWeight: "var(--weight-display)", color: "var(--txt)",
+        letterSpacing: "var(--tracking-display)", lineHeight: 1.32,
+        textWrap: "balance", overflowWrap: "anywhere", maxWidth: 760,
+      }}>{ep.title}</div>
     </div>
   );
 }
@@ -274,9 +281,10 @@ function Toc({ points, playSec, onSeekSec }) {
   return (
     <div style={{
       // zIndex 必须高于后渲染的阅读井,否则整条目录栏被盖住收不到点击
-      position: "absolute", top: 56, right: 8, bottom: 16, width: 184, zIndex: 2,
+      position: "absolute", top: 60, right: 20, bottom: 16, width: 196, zIndex: 2,
       overflow: "auto", display: "flex", flexDirection: "column", gap: 2,
-      padding: "8px 8px 8px 0", boxSizing: "border-box",
+      padding: "8px 8px 8px 12px", boxSizing: "border-box",
+      borderLeft: "1px solid var(--line-faint)",
       animation: "pn-enter var(--dur-slow) var(--ease) both",
     }}>
       <StatusLabel tone="dim" style={{ padding: "0 0 6px 10px" }}>结构</StatusLabel>
@@ -291,8 +299,6 @@ function Toc({ points, playSec, onSeekSec }) {
           style={{
             display: "flex", flexDirection: "column", gap: 2, cursor: "pointer",
             padding: "5px 8px 5px 10px", borderRadius: "var(--radius-sm)",
-            borderLeft: i === active ? "2px solid var(--signal)" : "2px solid var(--line-faint)",
-            transition: "border-color var(--dur) var(--ease)",
           }}
         >
           <button
@@ -307,6 +313,7 @@ function Toc({ points, playSec, onSeekSec }) {
           >{p.ts}</button>
           <span style={{
             fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)",
+            fontWeight: i === active ? "var(--weight-medium)" : "var(--weight-regular)",
             color: i === active ? "var(--ink)" : "var(--scale)", lineHeight: "var(--leading-tight)",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>{p.h}</span>
@@ -353,26 +360,10 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
     (tab === "notes" ? onRegenerateNote : onRegenerateTranscript)?.();
   };
 
-  const tabBtn = (id, label) => (
-    <button
-      onClick={() => setTab(id)}
-      style={{
-        fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
-        fontWeight: "var(--weight-medium)",
-        letterSpacing: "var(--tracking-machine)",
-        background: "transparent", border: "none",
-        borderBottom: tab === id ? "2px solid var(--ink)" : "2px solid transparent",
-        color: tab === id ? "var(--ink)" : "var(--scale)",
-        padding: "6px 10px 10px", cursor: "pointer",
-        transition: "color var(--dur) var(--ease), border-color var(--dur) var(--ease)",
-      }}
-    >{label}</button>
-  );
-
   const points = ep.note?.points ?? [];
   return (
     <div ref={wellRef} style={{
-      flex: 1, minHeight: 0, background: "var(--well)", borderRadius: "var(--radius)",
+      flex: 1, minHeight: 0,
       display: "flex", flexDirection: "column", position: "relative",
     }}>
       {tab === "notes" && wide && points.length >= 3 && (
@@ -383,19 +374,21 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
         />
       )}
       <div style={{
-        flex: "none", display: "flex", gap: 8, padding: "12px 24px 0",
-        borderBottom: "1px solid var(--line-faint)",
+        flex: "none", display: "flex", alignItems: "center", gap: 12, padding: "0 28px 10px",
       }}>
-        {tabBtn("notes", "笔记")}
-        {tabBtn("transcript", "字幕")}
+        <Segmented
+          options={[{ value: "notes", label: "笔记" }, { value: "transcript", label: "字幕" }]}
+          value={tab}
+          onChange={setTab}
+          style={{ width: 180, flex: "none" }}
+        />
         <span style={{ flex: 1 }} />
         <Button
           variant="ghost" size="sm"
           title={tab === "notes" ? "换模型后重跑笔记,不重新转写" : "重新云端转写并重新生成笔记,耗时几分钟"}
           onClick={regenClick}
-          style={{ alignSelf: "center", marginBottom: 6 }}
         >
-          {confirm ? "确认重跑?" : tab === "notes" ? "重新生成" : "重新转写"}
+          {confirm ? "确认重跑?" : tab === "notes" ? "↻ 重新生成" : "↻ 重新转写"}
         </Button>
       </div>
       {tab === "notes" ? (
@@ -607,20 +600,21 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
           onResearch={doResearch} onApply={doApply} onClose={closeSel}
         />
       )}
-      <div style={{ maxWidth: 648, margin: "0 auto", padding: "24px 40px 48px", boxSizing: "border-box" }}>
+      <div style={{ maxWidth: 680, margin: "0 auto", padding: "28px 48px 64px", boxSizing: "border-box" }}>
         <div data-tts="tldr" data-block="tldr" style={{
           position: "relative",
-          background: "var(--panel)", border: "1px solid var(--line-soft)",
-          borderRadius: "var(--radius)", padding: "16px 24px",
-          display: "flex", flexDirection: "column", gap: 8,
+          borderBottom: "1px solid var(--line-faint)",
+          borderRadius: "var(--radius)", padding: "4px 0 24px",
+          display: "flex", flexDirection: "column", gap: 10,
           transition: "background var(--dur) var(--ease)",
           ...hl("tldr"),
         }}>
-          <PickBox id="tldr" top={16} />
+          <PickBox id="tldr" top={4} />
           <StatusLabel tone="dim">一句话</StatusLabel>
           <span style={{
-            fontFamily: "var(--font-sans)", fontSize: "var(--text-lg)",
-            fontWeight: "var(--weight-medium)", color: "var(--ink)", lineHeight: 1.6,
+            fontFamily: "var(--font-serif)", fontSize: "var(--text-lg)",
+            fontWeight: "var(--weight-regular)", color: "var(--ink)", lineHeight: 1.75,
+            letterSpacing: "var(--tracking-display)", textWrap: "pretty",
           }}>{M(note.tldr)}</span>
         </div>
 
@@ -652,23 +646,30 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
           </div>
         ))}
 
-        <SectionHead idx="02" title="值得记住的话" />
+        {note.quotes.length > 0 && <SectionHead idx="02" title="值得记住的话" />}
         {note.quotes.map((q, i) => (
           <div key={i} data-tts={`quote-${i}`} data-block={`quote-${i}`} style={{
             position: "relative",
-            marginTop: 16, background: "var(--panel)", borderRadius: "var(--radius)",
-            padding: "16px 24px", display: "flex", flexDirection: "column", gap: 8,
+            display: "flex", flexDirection: "column", gap: 8,
+            borderRadius: "var(--radius)",
             transition: "background var(--dur) var(--ease)",
-            ...hl(`quote-${i}`),
+            // 负外边距 + 等量内边距:朗读高亮出现底色时文字不位移
+            ...(ttsSeg === `quote-${i}`
+              ? { background: "var(--fill-active)", padding: "12px 16px", margin: "12px -16px 0" }
+              : { padding: 0, margin: "24px 0 0" }),
           }}>
-            <PickBox id={`quote-${i}`} top={16} />
-            <span style={{
-              fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
-              color: "var(--ink)", lineHeight: "var(--leading-note)",
-            }}>「{M(q.text)}」</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Timestamp time={q.ts} active={isActive(q.t)} onSeek={mkSeek(q.t)} />
-              <Who name={q.who} />
+            <PickBox id={`quote-${i}`} />
+            <div className="pn-card" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <span style={{
+                fontFamily: "var(--font-ui)", fontSize: "var(--text-base)",
+                fontWeight: "var(--weight-medium)",
+                color: "var(--txt)", lineHeight: 1.8,
+                letterSpacing: "var(--tracking-display)", textWrap: "pretty",
+              }}>「{M(q.text)}」</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Timestamp time={q.ts} active={isActive(q.t)} onSeek={mkSeek(q.t)} />
+                <Who name={q.who} />
+              </div>
             </div>
           </div>
         ))}
@@ -681,31 +682,48 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
           {note.resources.map((r, i) => (
             <div key={i} data-block={`res-${i}`} style={{
               position: "relative",
-              display: "flex", alignItems: "baseline", gap: 16,
-              padding: "12px 0", borderBottom: "1px solid var(--line-faint)",
+              display: "grid", gridTemplateColumns: "minmax(140px, 200px) minmax(0, 1fr)", columnGap: 24,
+              alignItems: "baseline",
+              padding: "13px 0",
+              borderBottom: i === note.resources.length - 1 ? "none" : "1px solid var(--line-faint)",
             }}>
-              <PickBox id={`res-${i}`} top={12} />
+              <PickBox id={`res-${i}`} top={13} />
               <span style={{
                 fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
-                fontWeight: "var(--weight-medium)", color: "var(--ink)", flex: "none",
+                fontWeight: "var(--weight-medium)", color: "var(--ink)", minWidth: 0,
+                overflowWrap: "anywhere",
               }}>{M(r.name)}</span>
               <span style={{
                 fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)",
-                color: "var(--scale)", lineHeight: 1.6,
+                color: "var(--scale)", lineHeight: 1.65, minWidth: 0,
+                overflowWrap: "anywhere",
               }}>{M(r.note)}</span>
             </div>
           ))}
         </div>
 
-        <SectionHead idx="04" title="我可能想深挖的" />
+        {note.questions.length > 0 && <SectionHead idx="04" title="我可能想深挖的" />}
         {note.questions.map((q, i) => (
           <div
             key={i}
             role={onAskQuestion ? "button" : undefined}
+            tabIndex={onAskQuestion ? 0 : undefined}
             title={onAskQuestion ? "在问答里追问这个问题" : undefined}
             onClick={onAskQuestion ? () => onAskQuestion(q) : undefined}
-            onMouseEnter={(e) => { if (onAskQuestion) e.currentTarget.style.background = "var(--fill-hover)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            onKeyDown={onAskQuestion ? (e) => {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAskQuestion(q); }
+            } : undefined}
+            onMouseEnter={(e) => {
+              if (!onAskQuestion) return;
+              e.currentTarget.style.background = "var(--fill-hover)";
+              const arrow = e.currentTarget.querySelector("[data-ask-arrow]");
+              if (arrow) arrow.style.color = "var(--signal)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              const arrow = e.currentTarget.querySelector("[data-ask-arrow]");
+              if (arrow) arrow.style.color = "var(--scale)";
+            }}
             style={{
               display: "flex", gap: 8, marginTop: 12, alignItems: "baseline",
               padding: "4px 8px", margin: "12px -8px 0", borderRadius: "var(--radius-sm)",
@@ -722,9 +740,10 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
               color: "var(--ink)", lineHeight: "var(--leading-note)", flex: 1,
             }}>{M(q)}</span>
             {onAskQuestion && (
-              <span style={{
+              <span data-ask-arrow="" style={{
                 fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
                 letterSpacing: "var(--tracking-machine)", color: "var(--scale)", flex: "none",
+                transition: "color var(--dur) var(--ease)",
               }}>追问 →</span>
             )}
           </div>
@@ -734,22 +753,22 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
   );
 }
 
-/** 走带图标:▶ 播放 / ⏸ 暂停(CSS 绘制,不引图标库) */
+/** 走带图标:▶ 播放 / ⏸ 暂停(CSS 绘制,不引图标库);承在 accent 实底圆钮上 */
 function PlayGlyph() {
   return (
     <span style={{
       width: 0, height: 0, borderStyle: "solid",
-      borderWidth: "8px 0 8px 13px",
-      borderColor: "transparent transparent transparent var(--ink)",
+      borderWidth: "7px 0 7px 11px",
+      borderColor: "transparent transparent transparent var(--on-accent)",
       marginLeft: 3, // 三角形视觉居中补偿
     }} />
   );
 }
 function PauseGlyph() {
   return (
-    <span style={{ display: "flex", gap: 4 }}>
-      <i style={{ display: "block", width: 4, height: 15, background: "var(--ink)" }} />
-      <i style={{ display: "block", width: 4, height: 15, background: "var(--ink)" }} />
+    <span style={{ display: "flex", gap: 3.5 }}>
+      <i style={{ display: "block", width: 3.5, height: 13, background: "var(--on-accent)", borderRadius: 1 }} />
+      <i style={{ display: "block", width: 3.5, height: 13, background: "var(--on-accent)", borderRadius: 1 }} />
     </span>
   );
 }
@@ -757,46 +776,59 @@ function PauseGlyph() {
 function Player({ ep, playFrac, playing, speed, downloadPct, onTogglePlay, onSeekFrac, onCycleSpeed, bars }) {
   const anchors = ep.note ? ep.note.points.map((p) => p.t / ep.durationSec) : [];
   const downloading = downloadPct != null;
+  // 窄窗(抽屉挤压主列)时收起总时长,波形永远不许被文字叠上
+  const rootRef = useRef(null);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const ob = new ResizeObserver(() => setNarrow(el.clientWidth < 560));
+    ob.observe(el);
+    return () => ob.disconnect();
+  }, []);
   return (
-    <div style={{
-      flex: "none", background: "var(--well)", borderRadius: "var(--radius)",
-      padding: "16px 24px", boxSizing: "border-box",
-      display: "flex", alignItems: "center", gap: 16,
+    <div ref={rootRef} className="pn-player" style={{
+      flex: "none", gap: narrow ? 10 : undefined,
     }}>
-      <Button
-        variant="secondary"
+      <button
         onClick={downloading ? undefined : onTogglePlay}
         style={{
-          flex: "none", width: 52, height: 40, padding: 0,
+          flex: "none", width: 38, height: 38, padding: 0,
+          borderRadius: 999, border: "none", cursor: downloading ? "default" : "pointer",
+          background: "var(--accent)", color: "var(--on-accent)",
+          boxShadow: "var(--shadow-key)",
           display: "inline-flex", alignItems: "center", justifyContent: "center",
-          opacity: downloading ? 0.7 : 1,
+          opacity: downloading ? 0.75 : 1,
+          transition: "filter var(--dur) var(--ease)",
         }}
+        onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(1.08)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.filter = "none"; }}
         aria-label={downloading ? "音频下载中" : playing ? "暂停" : "播放"}
         title={playing ? "暂停(回车)" : "播放(回车)"}
       >
         {downloading
-          ? <span style={{ fontSize: "var(--text-xs)", fontVariantNumeric: "tabular-nums" }}>{downloadPct}%</span>
+          ? <span style={{ fontSize: 10, fontFamily: "var(--font-data)", fontVariantNumeric: "tabular-nums" }}>{downloadPct}%</span>
           : playing ? <PauseGlyph /> : <PlayGlyph />}
-      </Button>
+      </button>
       <span style={{
-        fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
+        fontFamily: "var(--font-data)", fontSize: "var(--text-xs)",
         letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
-        color: "var(--ink)", flex: "none",
+        color: "var(--dim)", flex: "none",
       }}>{fmt(playFrac * ep.durationSec)}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <Waveform bars={bars} progress={playFrac} anchors={anchors} height={40} onSeek={onSeekFrac} />
+        <Waveform bars={bars} progress={playFrac} anchors={anchors} height={36} onSeek={onSeekFrac} />
       </div>
-      <span style={{
-        fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
-        letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
-        color: "var(--scale)", flex: "none",
-      }}>{ep.duration}</span>
+      {!narrow && (
+        <span style={{
+          fontFamily: "var(--font-data)", fontSize: "var(--text-xs)",
+          letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
+          color: "var(--faint)", flex: "none",
+        }}>{ep.duration}</span>
+      )}
       <Button
-        variant="secondary" onClick={onCycleSpeed}
+        variant="secondary" size="sm" onClick={onCycleSpeed}
         style={{
-          flex: "none", width: 60, height: 40, padding: 0,
-          display: "inline-flex", alignItems: "center", justifyContent: "center",
-          fontSize: "var(--text-sm)",
+          flex: "none", fontFamily: "var(--font-data)", fontVariantNumeric: "tabular-nums",
         }}
         title="切换倍速"
       >
@@ -847,7 +879,7 @@ function StateWell({ ep, onRetry, onGoSettings }) {
 }
 const Center = ({ children }) => (
   <div style={{
-    flex: 1, background: "var(--well)", borderRadius: "var(--radius)",
+    flex: 1,
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16,
     animation: "pn-enter var(--dur-slow) var(--ease) both",
   }}>{children}</div>
@@ -897,9 +929,11 @@ export function NoteView({ ep, playFrac, playing, speed, bars, downloadPct, tran
   useEffect(() => () => { cancelResearch(); setSession(null); setQaOpen(false); setQaPrefill(""); }, [ep?.id]);
 
   if (!ep) return null;
+  // 抽屉永远并排(左中右三栏),不做覆盖式浮层:正文可以被压窄,但不许被盖住
   return (
-    <div style={{ flex: 1, minWidth: 0, display: "flex", gap: 16 }}>
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
+      {/* 中栏 position:relative:玻璃皮的悬浮播放器以中栏为锚,不越界压到抽屉 */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", position: "relative" }}>
         <Console
           key={ep.id} ep={ep} onToggleRead={onToggleRead} tts={tts} onToggleTts={onToggleTts} onCycleTtsRate={onCycleTtsRate}
           onToggleQa={ep.note && qaApi ? () => (qaOpen ? setQaOpen(false) : openQa()) : undefined}

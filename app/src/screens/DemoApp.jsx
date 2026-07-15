@@ -36,9 +36,11 @@ export function DemoApp() {
   return (
     <div style={{
       position: "relative", width: "100%", height: "100%",
-      display: "flex", gap: 16, padding: 16, boxSizing: "border-box",
+      display: "flex", boxSizing: "border-box",
+      padding: "var(--frame-pad)", gap: "var(--frame-pad)",
     }}>
       {view === "settings" ? (
+        <div className="pn-unit" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}>
         <Settings
           view={{
             llmBaseUrl: "", llmModel: "", notesDir: "~/Documents/Podnote",
@@ -53,6 +55,7 @@ export function DemoApp() {
           onGoSubs={() => {}}
           onBack={() => setView("notes")}
         />
+        </div>
       ) : (
         <>
           <Rack
@@ -62,16 +65,18 @@ export function DemoApp() {
             onAdd={() => { setAdding(true); setAddAct("input"); }}
             onSettings={() => setView("settings")}
           />
-          <NoteView
-            ep={ep}
-            playFrac={playFrac} playing={playing} speed={speed}
-            bars={DEMO_PEAKS}
-            onTogglePlay={() => setPlaying((p) => !p)}
-            onSeekFrac={setPlayFrac}
-            onCycleSpeed={() => setSpeed((v) => ({ 1: 1.5, 1.5: 2, 2: 1 }[v]))}
-            onRetry={() => {}}
-            onGoSettings={() => setView("settings")}
-          />
+          <div className="pn-unit" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden", position: "relative" }}>
+            <NoteView
+              ep={ep}
+              playFrac={playFrac} playing={playing} speed={speed}
+              bars={DEMO_PEAKS}
+              onTogglePlay={() => setPlaying((p) => !p)}
+              onSeekFrac={setPlayFrac}
+              onCycleSpeed={() => setSpeed((v) => ({ 1: 1.5, 1.5: 2, 2: 1 }[v]))}
+              onRetry={() => {}}
+              onGoSettings={() => setView("settings")}
+            />
+          </div>
         </>
       )}
       {adding && (

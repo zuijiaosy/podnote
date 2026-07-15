@@ -34,7 +34,7 @@ export function Subscriptions({
     setCheckMsg("");
     try {
       const n = await onCheck();
-      setCheckMsg(n > 0 ? `发现 ${n} 集新单集,已自动处理` : "没有新单集");
+      setCheckMsg(n > 0 ? `发现 ${n} 集新单集，已自动处理` : "没有新单集");
     } catch (e) {
       setCheckMsg(String(e));
     } finally {
@@ -48,19 +48,22 @@ export function Subscriptions({
       display: "flex", justifyContent: "center", padding: "48px 0", boxSizing: "border-box",
       animation: "pn-enter var(--dur-slow) var(--ease) both",
     }}>
-      <div style={{ width: 560, display: "flex", flexDirection: "column", gap: 16, height: "fit-content" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <StatusLabel>订阅</StatusLabel>
+      <div style={{ width: "min(640px, calc(100vw - 96px))", display: "flex", flexDirection: "column", gap: 16, height: "fit-content" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+          <span style={{
+            fontFamily: "var(--font-serif)", fontSize: "var(--text-xl)",
+            fontWeight: "var(--weight-display)", letterSpacing: "var(--tracking-display)",
+            color: "var(--ink)",
+          }}>订阅</span>
           <StatusLabel tone="dim">{auto ? "自动检查 · 每 30 分钟" : "自动检查已关闭"}</StatusLabel>
           <span style={{ flex: 1 }} />
           <Button variant="ghost" size="sm" onClick={onBack}>返回</Button>
         </div>
         <div style={{
-          background: "var(--well)", borderRadius: "var(--radius)",
-          padding: "8px 24px", boxSizing: "border-box", display: "flex", flexDirection: "column",
+          boxSizing: "border-box", display: "flex", flexDirection: "column",
         }}>
           {subs.length === 0 && (
-            <FieldRow title="还没有订阅" hint="添加节目后,新单集会自动出现在磁带架上" />
+            <FieldRow title="还没有订阅" hint="添加节目后，新单集会自动出现在磁带架上" />
           )}
           {subs.map((s) => (
             <FieldRow key={s.pid} title={s.title}
@@ -83,8 +86,8 @@ export function Subscriptions({
               </Button>
             </div>
           </FieldRow>
-          <FieldRow title="立即检查" hint={checkMsg || "现在就查一遍更新;新单集会自动处理,消耗 API 额度"} last>
-            <Button variant="secondary" size="sm" onClick={check} disabled={checking}>
+          <FieldRow title="立即检查" hint={checkMsg || "现在就查一遍更新；新单集会自动处理，消耗 API 额度"} last>
+            <Button variant="knob" size="sm" onClick={check} disabled={checking}>
               {checking ? "检查中…" : "检查"}
             </Button>
           </FieldRow>

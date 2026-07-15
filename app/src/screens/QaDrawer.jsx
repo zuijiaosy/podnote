@@ -2,7 +2,7 @@
 // 与阅读井并排(440px,同 ResearchDrawer);问答记录是 append-only 日志,
 // 内容(转写/笔记)更新后旧轮次可见但不再续入新请求的上下文——分隔线以下才是当前语境。
 import { useEffect, useRef, useState } from "react";
-import { Button, Input } from "../components/core.jsx";
+import { Button } from "../components/core.jsx";
 import { IndicatorLight, StatusLabel, Timestamp } from "../components/instrument.jsx";
 
 const sans = {
@@ -89,7 +89,13 @@ function Answer({ text, refs, onSeekSec }) {
 function UsageMeter({ usage }) {
   if (!usage) return null;
   return (
-    <div style={{ ...mono, color: "var(--scale)" }}>
+    <div
+      title={`输入 ${fmtNum(usage.inputTokens)} · 缓存读 ${fmtNum(usage.cacheReadTokens)} · 缓存写 ${fmtNum(usage.cacheWriteTokens)} · 输出 ${fmtNum(usage.outputTokens)}`}
+      style={{
+        ...mono, color: "var(--scale)",
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}
+    >
       输入 {fmtNum(usage.inputTokens)} · 缓存读 {fmtNum(usage.cacheReadTokens)} · 缓存写 {fmtNum(usage.cacheWriteTokens)} · 输出 {fmtNum(usage.outputTokens)}
     </div>
   );
@@ -97,11 +103,14 @@ function UsageMeter({ usage }) {
 
 function Round({ round, stale, onSeekSec }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className="pn-card" style={{
+      display: "flex", flexDirection: "column", gap: 8,
+      padding: "12px 14px",
+    }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <StatusLabel tone="dim">Q</StatusLabel>
         <span style={{ ...sans, fontWeight: "var(--weight-medium)", flex: 1 }}>{round.q}</span>
-        {stale && <StatusLabel tone="dim">基于旧版内容</StatusLabel>}
+        {stale && <StatusLabel tone="dim" style={{ fontWeight: "var(--weight-regular)", flex: "none" }}>基于旧版内容</StatusLabel>}
       </div>
       <Answer text={round.a} refs={round.refs} onSeekSec={onSeekSec} />
       <UsageMeter usage={round.usage} />
@@ -113,7 +122,7 @@ function Round({ round, stale, onSeekSec }) {
  * api: {get: () => Promise<{rounds, current, estInputTokens}>, ask(q, history, onEvent), cancel()}
  * prefill:划词「追问」/深挖问题点击预填;每次变化覆盖输入框
  */
-export function QaDrawer({ ep, api, prefill, onSeekSec, onClose }) {
+export function QaDrawer({ ep, api, prefill, onSeekSec, onClose, style }) {
   const [rounds, setRounds] = useState(null); // null = 加载中
   const [current, setCurrent] = useState(null);
   const [est, setEst] = useState(0);
@@ -123,16 +132,21 @@ export function QaDrawer({ ep, api, prefill, onSeekSec, onClose }) {
   const scrollRef = useRef(null);
   const streamingRef = useRef(false);
 
+  // 历史加载失败要和"确实没有历史"分开:失败给原因和重试,不许装成空态
+  const [loadErr, setLoadErr] = useState(false);
+  const [loadGen, setLoadGen] = useState(0);
   useEffect(() => {
     let alive = true;
+    setLoadErr(false);
     api.get().then((qa) => {
       if (!alive) return;
       setRounds(qa.rounds);
       setCurrent(qa.current);
       setEst(qa.estInputTokens ?? 0);
-    }).catch(() => alive && setRounds([]));
+    }).catch(() => { if (alive) { setRounds([]); setLoadErr(true); } });
     return () => { alive = false; };
-  }, [ep.id]);
+  }, [ep.id, loadGen]);
+  const retryLoad = () => { setRounds(null); setLoadGen((g) => g + 1); };
   useEffect(() => { if (prefill) setInput(prefill); }, [prefill]);
   // 新内容进来贴底
   useEffect(() => {
@@ -187,20 +201,21 @@ export function QaDrawer({ ep, api, prefill, onSeekSec, onClose }) {
     }
   }
 
-  const questions = ep.note?.questions ?? [];
+  // 推荐问题在固定 footer 里,封顶 3 条,不许挤压问答历史
+  const questions = (ep.note?.questions ?? []).slice(0, 3);
 
   return (
-    <div style={{
-      flex: "none", width: 440, background: "var(--well)", borderRadius: "var(--radius)",
-      boxSizing: "border-box", display: "flex", flexDirection: "column", minHeight: 0,
+    <div className="pn-drawer" style={{
+      width: "clamp(320px, 34%, 420px)",
       animation: "pn-enter var(--dur-slow) var(--ease) both",
+      ...style,
     }}>
       <div style={{
         flex: "none", display: "flex", alignItems: "center", gap: 12,
         padding: "14px 20px", borderBottom: "1px solid var(--line-faint)",
       }}>
         <IndicatorLight status={streaming ? "processing" : "ready"} label="问答" />
-        <span style={{ ...mono, color: "var(--scale)" }}>约 {fmtNum(est)} tok/轮</span>
+        <span style={{ ...mono, color: "var(--scale)", opacity: 0.8, marginLeft: 4 }}>约 {fmtNum(est)} tok/轮</span>
         <span style={{ flex: 1 }} />
         {streaming && <Button variant="ghost" size="sm" onClick={abort}>中止</Button>}
         <Button variant="ghost" size="sm" onClick={onClose}>关闭</Button>
@@ -211,7 +226,13 @@ export function QaDrawer({ ep, api, prefill, onSeekSec, onClose }) {
         display: "flex", flexDirection: "column", gap: 16, boxSizing: "border-box",
       }}>
         {rounds === null && <StatusLabel tone="dim">加载中…</StatusLabel>}
-        {rounds?.length === 0 && !streaming && (
+        {loadErr && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ ...sans, color: "var(--scale)" }}>问答历史没能加载出来</span>
+            <Button variant="ghost" size="sm" onClick={retryLoad}>重试</Button>
+          </div>
+        )}
+        {rounds?.length === 0 && !streaming && !loadErr && (
           <div style={{ ...sans, color: "var(--scale)" }}>
             对着这期节目提问,回答只依据转写稿,并带可回听的时间戳。
           </div>
@@ -219,7 +240,9 @@ export function QaDrawer({ ep, api, prefill, onSeekSec, onClose }) {
         {rows.map((row) =>
           row.divider ? (
             <div key={row.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ ...mono, color: "var(--scale)" }}>内容已更新 · 以上不再带入上下文</span>
+              <span style={{
+                fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--scale)",
+              }}>内容已更新 · 以上不再带入上下文</span>
               <span style={{ flex: 1, height: 1, background: "var(--line-faint)" }} />
             </div>
           ) : (
@@ -227,7 +250,10 @@ export function QaDrawer({ ep, api, prefill, onSeekSec, onClose }) {
           )
         )}
         {streaming && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="pn-card" style={{
+            display: "flex", flexDirection: "column", gap: 8,
+            padding: "12px 14px",
+          }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
               <StatusLabel tone="dim">Q</StatusLabel>
               <span style={{ ...sans, fontWeight: "var(--weight-medium)" }}>{streaming.q}</span>
@@ -244,8 +270,8 @@ export function QaDrawer({ ep, api, prefill, onSeekSec, onClose }) {
       </div>
 
       <div style={{
-        flex: "none", display: "flex", flexDirection: "column", gap: 8,
-        padding: "12px 20px 16px", borderTop: "1px solid var(--line-faint)",
+        flex: "none", display: "flex", flexDirection: "column", gap: 6,
+        padding: "8px 14px 12px", borderTop: "1px solid var(--line-faint)",
       }}>
         {questions.length > 0 && !streaming && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -254,32 +280,73 @@ export function QaDrawer({ ep, api, prefill, onSeekSec, onClose }) {
                 key={i}
                 onClick={() => setInput(q)}
                 title={q}
-                style={{
-                  ...mono, color: "var(--scale)", padding: "3px 8px", cursor: "pointer",
-                  background: "none", border: "1px solid var(--line-soft)", borderRadius: "var(--radius-sm)",
-                  maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "var(--accent)";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = "var(--shadow-pop)";
                 }}
-              >Q{i + 1} {q}</button>
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--dim)";
+                  e.currentTarget.style.transform = "none";
+                  e.currentTarget.style.boxShadow = "var(--shadow-key)";
+                }}
+                style={{
+                  maxWidth: "100%", textAlign: "left",
+                  fontFamily: "var(--font-ui)", fontSize: "var(--text-xs)",
+                  color: "var(--dim)", padding: "3px 10px 4px", cursor: "pointer",
+                  background: "var(--surface-2)", border: "1px solid var(--border-unit)",
+                  borderRadius: "var(--radius-chip)", boxShadow: "var(--shadow-key)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  transition: "color var(--dur) var(--ease), transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease)",
+                  animation: "pn-enter var(--dur-slow) var(--ease) both",
+                  animationDelay: `${i * 40}ms`,
+                }}
+              >{q}</button>
             ))}
           </div>
         )}
-        <div style={{ display: "flex", gap: 8 }}>
-          <Input
-            mono={false}
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <textarea
+            rows={1}
             value={input}
-            placeholder="问点节目里聊过的…"
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") ask(input); }}
-            style={{ flex: 1 }}
+            placeholder="问点节目里聊过的…(Shift+回车换行)"
+            title="每次提问都会把整期转写稿发给你的 LLM;历史只带「内容已更新」线以下的轮次"
+            onChange={(e) => {
+              setInput(e.target.value);
+              // 自动增高:重置后取内容高度,封顶约 5 行
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                ask(input);
+                e.target.style.height = "auto";
+              }
+            }}
             aria-label="问答输入"
+            style={{
+              flex: 1, resize: "none", outline: "none", overflowY: "auto",
+              fontFamily: "var(--font-ui)", fontSize: "var(--text-sm)", lineHeight: 1.55,
+              color: "var(--txt)",
+              background: "var(--surface-well)",
+              border: "1px solid transparent",
+              borderRadius: "var(--radius-field)",
+              boxShadow: "var(--shadow-well)",
+              padding: "7px 12px", boxSizing: "border-box",
+              transition: "border-color var(--dur) var(--ease)",
+            }}
+            onFocus={(e) => { e.target.style.borderColor = "var(--accent)"; }}
+            onBlur={(e) => { e.target.style.borderColor = "transparent"; }}
           />
-          <Button variant="secondary" size="sm" onClick={() => ask(input)} disabled={!!streaming}>
+          <Button
+            variant="secondary" size="sm" onClick={() => ask(input)} disabled={!!streaming}
+            title="每次提问都会把整期转写稿发给你的 LLM,费用见头部估算"
+            style={{ flex: "none" }}
+          >
             {streaming ? "回答中…" : "提问"}
           </Button>
         </div>
-        <span style={{ ...mono, color: "var(--scale)" }}>
-          每次提问都会把整期转写稿发给你的 LLM;历史只带"内容已更新"线以下的轮次
-        </span>
       </div>
     </div>
   );

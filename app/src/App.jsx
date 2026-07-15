@@ -474,32 +474,37 @@ function LiveApp() {
   return (
     <div style={{
       position: "relative", width: "100%", height: "100%",
-      display: "flex", gap: 16, padding: 16, boxSizing: "border-box",
+      display: "flex", boxSizing: "border-box",
+      padding: "var(--frame-pad)", gap: "var(--frame-pad)",
     }}>
       {view === "settings" ? (
         settingsView && (
-          <Settings
-            view={settingsView}
-            onChangeField={saveSettings}
-            onSaveKeys={saveKeys}
-            onChooseDir={chooseDir}
-            onTestAsr={() => api.testAsrKey()}
-            onTestLlm={() => api.testLlm()}
-            onTestTavily={() => api.testTavily()}
-            subsCount={subs.length}
-            onGoSubs={() => setView("subs")}
-            onBack={() => setView("notes")}
-          />
+          <div className="pn-unit" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}>
+            <Settings
+              view={settingsView}
+              onChangeField={saveSettings}
+              onSaveKeys={saveKeys}
+              onChooseDir={chooseDir}
+              onTestAsr={() => api.testAsrKey()}
+              onTestLlm={() => api.testLlm()}
+              onTestTavily={() => api.testTavily()}
+              subsCount={subs.length}
+              onGoSubs={() => setView("subs")}
+              onBack={() => setView("notes")}
+            />
+          </div>
         )
       ) : view === "subs" ? (
-        <Subscriptions
-          subs={subs}
-          auto={!!settingsView?.subAuto}
-          onAdd={addSub}
-          onRemove={removeSub}
-          onCheck={checkSubs}
-          onBack={() => setView("notes")}
-        />
+        <div className="pn-unit" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}>
+          <Subscriptions
+            subs={subs}
+            auto={!!settingsView?.subAuto}
+            onAdd={addSub}
+            onRemove={removeSub}
+            onCheck={checkSubs}
+            onBack={() => setView("notes")}
+          />
+        </div>
       ) : (
         <>
           <Rack
@@ -528,6 +533,7 @@ function LiveApp() {
             onExportEpisode={(id) => api.exportEpisode(id)}
             onExportShow={(show) => api.exportShow(show)}
           />
+          <div className="pn-unit" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden", position: "relative" }}>
           {episodes.length === 0 ? (
             <Empty
               selfCheck={{
@@ -604,6 +610,7 @@ function LiveApp() {
               onGoSettings={() => setView("settings")}
             />
           )}
+          </div>
         </>
       )}
       <audio

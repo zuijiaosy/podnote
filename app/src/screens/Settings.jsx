@@ -4,6 +4,7 @@
 import { useRef, useState } from "react";
 import { Button, FieldRow, Input, Lever, Segmented, Select } from "../components/core.jsx";
 import { StatusLabel, IndicatorLight } from "../components/instrument.jsx";
+import { SKINS, MODES, currentSkin, currentMode, setSkin, setMode } from "../lib/theme.js";
 
 const DEFAULTS = {
   asrHost: "https://dashscope.aliyuncs.com",
@@ -31,8 +32,8 @@ const TTS_VOICES = [
 function Card({ children }) {
   return (
     <div style={{
-      background: "var(--well)", borderRadius: "var(--radius)",
-      padding: "8px 24px", boxSizing: "border-box", display: "flex", flexDirection: "column",
+      boxSizing: "border-box", display: "flex", flexDirection: "column",
+      paddingBottom: 8,
     }}>{children}</div>
   );
 }
@@ -56,7 +57,8 @@ function KeyInput({ saved, hint, onSave, onClear, label }) {
       <Input
         type="password"
         value={val}
-        placeholder={saved ? `····${hint} · 输入以更换` : "sk-…"}
+        title={saved ? "输入新值以更换" : undefined}
+        placeholder={saved ? `····${hint}` : "sk-…"}
         onChange={(e) => setVal(e.target.value)}
         onBlur={() => { if (val.trim()) { onSave(val.trim()); setVal(""); } }}
         style={{ width: saved ? 200 : 264 }}
@@ -93,7 +95,13 @@ function KeyTitle({ name, saved, required }) {
   return (
     <>
       <span>{name}</span>
-      <StatusLabel tone={saved ? "ready" : required ? "signal" : "dim"}>
+      {saved && (
+        <span style={{
+          width: 5, height: 5, borderRadius: "var(--radius-round)",
+          background: "var(--ready)", flex: "none",
+        }} />
+      )}
+      <StatusLabel tone={saved ? "dim" : required ? "signal" : "dim"} style={{ fontWeight: "var(--weight-regular)" }}>
         {saved ? "已保存" : "未设置"}
       </StatusLabel>
     </>
@@ -136,6 +144,32 @@ function SelfCheck({ tavilySet, onTestAsr, onTestLlm, onTestTavily }) {
         </Button>
       </div>
     </FieldRow>
+  );
+}
+
+/** 外观:皮肤(磁带机/玻璃)× 亮暗(可跟随系统)。纯本机偏好,即点即换,不经后端。 */
+function Appearance() {
+  const [skin, setSkinState] = useState(currentSkin);
+  const [mode, setModeState] = useState(currentMode);
+  return (
+    <>
+      <FieldRow title="皮肤" hint="磁带机 = 实体按键与荧光屏;玻璃 = 悬浮半透明面板">
+        <Segmented
+          options={SKINS}
+          value={skin}
+          onChange={(v) => { setSkin(v); setSkinState(v); }}
+          style={{ width: 220 }}
+        />
+      </FieldRow>
+      <FieldRow title="外观" hint="跟随系统时,随 macOS 深色模式自动切换" last>
+        <Segmented
+          options={MODES}
+          value={mode}
+          onChange={(v) => { setMode(v); setModeState(v); }}
+          style={{ width: 264 }}
+        />
+      </FieldRow>
+    </>
   );
 }
 
@@ -183,14 +217,23 @@ export function Settings({
       display: "flex", justifyContent: "center", padding: "48px 0", boxSizing: "border-box",
       animation: "pn-enter var(--dur-slow) var(--ease) both",
     }}>
-      <div style={{ width: 560, display: "flex", flexDirection: "column", gap: 16, height: "fit-content" }}>
+      <div style={{ width: "min(640px, calc(100vw - 96px))", display: "flex", flexDirection: "column", gap: 16, height: "fit-content" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <StatusLabel>设置</StatusLabel>
+          <span style={{
+            fontFamily: "var(--font-serif)", fontSize: "var(--text-xl)",
+            fontWeight: "var(--weight-display)", letterSpacing: "var(--tracking-display)",
+            color: "var(--ink)",
+          }}>设置</span>
           <span style={{ flex: 1 }} />
           <Button variant="ghost" size="sm" onClick={onBack}>返回</Button>
         </div>
 
-        <StatusLabel tone="dim">接入 · 必需</StatusLabel>
+        <StatusLabel tone="dim" style={{ marginTop: 8 }}>外观</StatusLabel>
+        <Card>
+          <Appearance />
+        </Card>
+
+        <StatusLabel tone="dim" style={{ marginTop: 16 }}>接入 · 必需</StatusLabel>
         <Card>
           <FieldRow
             title={<KeyTitle name="百炼 API Key" saved={view.asrKeySet} required />}
@@ -234,7 +277,7 @@ export function Settings({
             onTestAsr={onTestAsr} onTestLlm={onTestLlm} onTestTavily={onTestTavily} />
         </Card>
 
-        <StatusLabel tone="dim">增强 · 可选</StatusLabel>
+        <StatusLabel tone="dim" style={{ marginTop: 16 }}>增强 · 可选</StatusLabel>
         <Card>
           <FieldRow
             title={<KeyTitle name="Tavily API Key" saved={view.tavilyKeySet} />}

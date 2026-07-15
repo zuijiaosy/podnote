@@ -1,53 +1,48 @@
-// 设计系统·core 族 — 移植自「Podnote 正式设计 standalone.html」内嵌组件库
+// 设计系统·core 族 — 宪法 v4「双皮肤仪器」
+// 物理语言:按键有键程(shadow-key/键按下沉),输入是凹槽(shadow-well),
+// 主动作 = accent 实底;所有形态差异(方键 vs 胶囊)由皮肤 token 决定,组件不感知皮肤。
 import { useEffect, useRef, useState } from "react";
 
-/** 按钮。knob = 橙色实体圆钮(仅"需要你启动"的场合);secondary = 凹槽平钮;ghost = 纯文字。 */
+/** 按钮。knob = accent 实底(仅"需要你启动/花钱"的场合);secondary = 实体按键;ghost = 纯文字。 */
 export function Button({ variant = "secondary", size = "md", children, style, ...rest }) {
   const [hover, setHover] = useState(false);
-  const [down, setDown] = useState(false);
-  const pad = { sm: "6px 12px", md: "9px 16px", lg: "13px 24px" }[size];
-  const dia = { sm: 48, md: 64, lg: 88 }[size];
+  const pad = { sm: "5px 12px", md: "8px 16px", lg: "12px 26px" }[size];
   const base = {
-    fontFamily: "var(--font-mono)",
-    /* 按钮文字统一 sm(13px):中文在 xs 档不可读;尺寸差异交给内边距 */
-    fontSize: "var(--text-sm)",
+    fontFamily: "var(--font-ui)",
+    fontSize: size === "lg" ? "var(--text-base)" : "var(--text-sm)",
     fontWeight: "var(--weight-medium)",
-    letterSpacing: "var(--tracking-machine)",
-    textTransform: "uppercase",
+    lineHeight: "var(--leading-tight)",
+    padding: pad,
+    borderRadius: "var(--radius-ctl)",
     cursor: "pointer",
-    transition:
-      "background var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur) var(--ease)",
-    transform: down ? "translateY(1px)" : "none",
     userSelect: "none",
+    transition: "background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease)",
   };
   const variants = {
     knob: {
-      width: dia, height: dia, borderRadius: "50%",
-      background: "var(--signal)", color: "var(--panel)",
-      border: "2px solid var(--ink)",
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
-      filter: hover ? "brightness(0.94)" : "none",
+      background: "var(--accent)", color: "var(--on-accent)",
+      border: "1px solid transparent",
+      boxShadow: "var(--shadow-key)",
+      filter: hover ? "brightness(1.08)" : "none",
     },
     secondary: {
-      padding: pad, borderRadius: "var(--radius)",
-      background: hover ? "var(--fill-hover)" : "var(--well)",
-      color: "var(--ink)", border: "1px solid var(--line-soft)",
+      background: hover ? "var(--surface-hover)" : "var(--surface-2)",
+      color: "var(--txt)",
+      border: "1px solid var(--border-unit)",
+      boxShadow: "var(--shadow-key)",
     },
+    // ghost 也要一眼认得出是按钮:静息带一层浅底,不再是裸文字
     ghost: {
-      padding: pad, borderRadius: "var(--radius)",
-      background: hover ? "var(--fill-hover)" : "transparent",
-      color: hover ? "var(--ink)" : "var(--scale)",
-      // 可见边框:纯文字按钮与静态标签必须能一眼区分
-      border: "1px solid var(--line-soft)",
+      background: hover ? "var(--fill-active)" : "var(--fill-hover)",
+      color: hover ? "var(--txt)" : "var(--dim)",
+      border: "1px solid transparent",
     },
   };
   return (
     <button
       {...rest}
       onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => { setHover(false); setDown(false); }}
-      onMouseDown={() => setDown(true)}
-      onMouseUp={() => setDown(false)}
+      onMouseLeave={() => setHover(false)}
       style={{ ...base, ...variants[variant], ...style }}
     >
       {children}
@@ -55,25 +50,30 @@ export function Button({ variant = "secondary", size = "md", children, style, ..
   );
 }
 
-/** 分段选择:选项互斥,选中项 fill-active + ink 描边(与磁带架视图切换同语言) */
+/** 分段选择:选项互斥。仪器语言 = 凹槽轨道 + 浮起的选中键(磁带机方键/玻璃胶囊由 token 决定)。 */
 export function Segmented({ options, value, onChange, style }) {
   const cell = (active) => ({
-    flex: 1, padding: "5px 8px", textAlign: "center",
-    fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
-    letterSpacing: "var(--tracking-machine)",
+    flex: 1,
+    padding: "4px 12px 5px",
+    textAlign: "center",
+    fontFamily: "var(--font-ui)", fontSize: "var(--text-sm)",
+    fontWeight: active ? "var(--weight-medium)" : "var(--weight-regular)",
+    fontVariantNumeric: "tabular-nums",
     cursor: active ? "default" : "pointer", userSelect: "none",
-    background: active ? "var(--fill-active)" : "transparent",
-    color: active ? "var(--ink)" : "var(--scale)",
-    border: active ? "1px solid var(--ink)" : "1px solid transparent",
-    borderRadius: "var(--radius-sm)",
+    background: active ? "var(--surface-2)" : "transparent",
+    color: active ? "var(--txt)" : "var(--dim)",
+    border: "none",
+    borderRadius: "var(--radius-ctl)",
+    boxShadow: active ? "var(--shadow-key)" : "none",
     whiteSpace: "nowrap",
-    transition: "background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease)",
+    transition: "color var(--dur) var(--ease), background var(--dur) var(--ease), box-shadow var(--dur) var(--ease)",
   });
   return (
     <div style={{
-      display: "flex", gap: 4, padding: 3,
-      background: "var(--panel)", border: "1px solid var(--line-soft)",
-      borderRadius: "var(--radius)", boxSizing: "border-box",
+      display: "flex", gap: 2, padding: 3, boxSizing: "border-box",
+      background: "var(--surface-well)",
+      borderRadius: "calc(var(--radius-ctl) + 3px)",
+      boxShadow: "var(--shadow-well)",
       ...style,
     }}>
       {options.map((o) => (
@@ -86,7 +86,7 @@ export function Segmented({ options, value, onChange, style }) {
   );
 }
 
-/** 凹槽输入框。mono=true 用于机器内容(链接、API Key);sans 用于人写的内容。 */
+/** 输入凹槽:面板上凹进去的一道槽。mono=true 用于机器内容(链接、API Key);sans 用于人写的内容。 */
 export function Input({ mono = true, style, ...rest }) {
   const [focus, setFocus] = useState(false);
   return (
@@ -95,14 +95,15 @@ export function Input({ mono = true, style, ...rest }) {
       onFocus={(e) => { setFocus(true); rest.onFocus?.(e); }}
       onBlur={(e) => { setFocus(false); rest.onBlur?.(e); }}
       style={{
-        fontFamily: mono ? "var(--font-mono)" : "var(--font-sans)",
+        fontFamily: mono ? "var(--font-data)" : "var(--font-ui)",
         fontSize: "var(--text-sm)",
         letterSpacing: mono ? "var(--tracking-machine)" : "normal",
-        color: "var(--ink)",
-        background: "var(--well)",
-        border: focus ? "1px solid var(--ink)" : "1px solid var(--line-soft)",
-        borderRadius: "var(--radius)",
-        padding: "8px 12px",
+        color: "var(--txt)",
+        background: "var(--surface-well)",
+        border: focus ? "1px solid var(--accent)" : "1px solid transparent",
+        borderRadius: "var(--radius-field)",
+        boxShadow: "var(--shadow-well)",
+        padding: "7px 12px",
         outline: "none",
         boxSizing: "border-box",
         transition: "border-color var(--dur) var(--ease)",
@@ -112,21 +113,21 @@ export function Input({ mono = true, style, ...rest }) {
   );
 }
 
-/** 配置行:左侧标题+说明,右侧控件,行间细分隔线;设置与订阅两屏共用。 */
+/** 配置行:左侧标题+说明,右侧控件,行间发丝线;设置与订阅两屏共用。 */
 export function FieldRow({ title, hint, children, last }) {
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: 24, padding: "16px 0",
+      display: "flex", alignItems: "flex-start", gap: 24, padding: "17px 0 18px",
       borderBottom: last ? "none" : "1px solid var(--line-faint)",
     }}>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{
-          fontFamily: "var(--font-sans)", fontSize: "var(--text-base)",
-          fontWeight: "var(--weight-medium)", color: "var(--ink)",
+          fontFamily: "var(--font-ui)", fontSize: "var(--text-base)",
+          fontWeight: "var(--weight-medium)", color: "var(--txt)",
           display: "flex", alignItems: "center", gap: 8,
         }}>{title}</span>
         {hint && (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--scale)" }}>
+          <span style={{ fontFamily: "var(--font-ui)", fontSize: "var(--text-sm)", color: "var(--dim)", lineHeight: 1.5 }}>
             {hint}
           </span>
         )}
@@ -136,10 +137,8 @@ export function FieldRow({ title, hint, children, last }) {
   );
 }
 
-/** 凹槽下拉。有限枚举用它,不给自由文本留拼错的空间;当前值不在选项里时原样保留。
-    自绘触发器与面板:原生 select 的系统弹出菜单会打破仪器语言。
-    面板材质与 NoteView 右键菜单同源(panel 底 + line-soft 边,无阴影),
-    选中行 = fill-active + ink 描边,与 Segmented 选中态同语言。 */
+/** 下拉。有限枚举用它,不给自由文本留拼错的空间;当前值不在选项里时原样保留。
+    触发器 = 输入凹槽同语言;面板 = 卡片浮起(shadow-pop,全 App 仅浮层可用的最大阴影)。 */
 export function Select({ options, value, onChange, style }) {
   const items = options.some((o) => o.value === value) || !value
     ? options
@@ -186,12 +185,13 @@ export function Select({ options, value, onChange, style }) {
         onKeyDown={onKeyDown}
         style={{
           width: "100%", display: "flex", alignItems: "center", gap: 8,
-          fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)",
-          color: "var(--ink)",
-          background: "var(--well)",
-          border: open ? "1px solid var(--ink)" : "1px solid var(--line-soft)",
-          borderRadius: "var(--radius)",
-          padding: "8px 12px", boxSizing: "border-box", cursor: "pointer",
+          fontFamily: "var(--font-ui)", fontSize: "var(--text-sm)",
+          color: "var(--txt)",
+          background: "var(--surface-well)",
+          border: open ? "1px solid var(--accent)" : "1px solid transparent",
+          borderRadius: "var(--radius-field)",
+          boxShadow: "var(--shadow-well)",
+          padding: "7px 12px", boxSizing: "border-box", cursor: "pointer",
           transition: "border-color var(--dur) var(--ease)",
         }}
       >
@@ -199,8 +199,8 @@ export function Select({ options, value, onChange, style }) {
           {items.find((o) => o.value === value)?.label ?? value}
         </span>
         <span style={{
-          flex: "none", fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
-          color: "var(--scale)", transform: open ? "rotate(180deg)" : "none",
+          flex: "none", fontFamily: "var(--font-data)", fontSize: "var(--text-xs)",
+          color: "var(--dim)", transform: open ? "rotate(180deg)" : "none",
           transition: "transform var(--dur) var(--ease)", lineHeight: 1,
         }}>▾</span>
       </button>
@@ -209,7 +209,9 @@ export function Select({ options, value, onChange, style }) {
           role="listbox"
           style={{
             position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 3,
-            background: "var(--panel)", border: "1px solid var(--line-soft)",
+            background: "var(--surface-2)", border: "1px solid var(--border-unit)",
+            boxShadow: "var(--shadow-pop)",
+            backdropFilter: "blur(var(--blur)) saturate(1.6)",
             borderRadius: "var(--radius)", padding: 4, boxSizing: "border-box",
             display: "flex", flexDirection: "column", gap: 2,
             animation: "pn-enter var(--dur) var(--ease) both",
@@ -226,12 +228,13 @@ export function Select({ options, value, onChange, style }) {
                 onMouseEnter={(e) => { if (!active && hi !== i) e.currentTarget.style.background = "var(--fill-hover)"; }}
                 onMouseLeave={(e) => { if (!active && hi !== i) e.currentTarget.style.background = "transparent"; }}
                 style={{
-                  fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)",
-                  color: active ? "var(--ink)" : "var(--scale)",
+                  fontFamily: "var(--font-ui)", fontSize: "var(--text-sm)",
+                  fontWeight: active ? "var(--weight-medium)" : "var(--weight-regular)",
+                  color: active ? "var(--txt)" : "var(--dim)",
                   textAlign: "left", whiteSpace: "nowrap",
                   overflow: "hidden", textOverflow: "ellipsis",
                   background: active ? "var(--fill-active)" : hi === i ? "var(--fill-hover)" : "transparent",
-                  border: active ? "1px solid var(--ink)" : "1px solid transparent",
+                  border: "none",
                   borderRadius: "var(--radius-sm)",
                   padding: "6px 10px", cursor: active ? "default" : "pointer",
                 }}
@@ -244,7 +247,7 @@ export function Select({ options, value, onChange, style }) {
   );
 }
 
-/** 多选框。方形凹槽 + ink 实心方块,与 Lever 同语言;块级多选核查用。 */
+/** 多选框。凹槽方框,选中 = accent 实心块;块级多选核查用。 */
 export function Checkbox({ checked = false, onChange, style }) {
   const [hover, setHover] = useState(false);
   return (
@@ -256,16 +259,17 @@ export function Checkbox({ checked = false, onChange, style }) {
       onMouseLeave={() => setHover(false)}
       style={{
         width: 18, height: 18, padding: 0, flex: "none", position: "relative",
-        background: checked ? "var(--fill-active)" : "var(--well)",
-        border: checked || hover ? "1px solid var(--ink)" : "1px solid var(--line-soft)",
+        background: "var(--surface-well)",
+        border: checked || hover ? "1px solid var(--accent)" : "1px solid transparent",
+        boxShadow: "var(--shadow-well)",
         borderRadius: "var(--radius-sm)", boxSizing: "border-box", cursor: "pointer",
-        transition: "border-color var(--dur) var(--ease), background var(--dur) var(--ease)",
+        transition: "border-color var(--dur) var(--ease)",
         ...style,
       }}
     >
       {checked && (
         <span style={{
-          position: "absolute", inset: 4, background: "var(--ink)", borderRadius: 1,
+          position: "absolute", inset: 4, background: "var(--accent)", borderRadius: 2,
           animation: "pn-pop var(--dur) var(--ease) both",
         }} />
       )}
@@ -273,7 +277,7 @@ export function Checkbox({ checked = false, onChange, style }) {
   );
 }
 
-/** 拨杆开关。方形轨道 + 方形滑块,120ms 急停;不用 iOS 圆角开关。 */
+/** 开关。凹槽轨道,开 = accent 实底 + 白色圆钮;120ms 急停。 */
 export function Lever({ on = false, onChange, disabled = false, style }) {
   return (
     <button
@@ -282,7 +286,7 @@ export function Lever({ on = false, onChange, disabled = false, style }) {
       disabled={disabled}
       onClick={() => !disabled && onChange?.(!on)}
       style={{
-        display: "inline-flex", alignItems: "center", gap: 12,
+        display: "inline-flex", alignItems: "center",
         cursor: disabled ? "default" : "pointer",
         opacity: disabled ? 0.4 : 1,
         background: "none", border: "none", padding: 0,
@@ -290,24 +294,22 @@ export function Lever({ on = false, onChange, disabled = false, style }) {
       }}
     >
       <span style={{
-        width: 44, height: 22, flex: "none", position: "relative",
-        background: on ? "var(--fill-active)" : "var(--well)",
-        border: on ? "1px solid var(--ink)" : "1px solid var(--line-soft)",
-        borderRadius: "var(--radius-sm)", boxSizing: "border-box",
-        transition: "border-color var(--dur) var(--ease), background var(--dur) var(--ease)",
+        width: 38, height: 20, flex: "none", position: "relative",
+        background: on ? "var(--accent)" : "var(--surface-well)",
+        boxShadow: on ? "var(--shadow-key)" : "var(--shadow-well)",
+        border: "none",
+        borderRadius: 999, boxSizing: "border-box",
+        transition: "background var(--dur) var(--ease), box-shadow var(--dur) var(--ease)",
       }}>
         <span style={{
-          position: "absolute", top: 2, left: 2, width: 16, height: 16,
-          background: "var(--ink)", borderRadius: 2,
-          transform: on ? "translateX(22px)" : "none",
-          transition: "transform var(--dur) var(--ease)",
+          position: "absolute", top: 3, left: 3, width: 14, height: 14,
+          background: on ? "var(--on-accent)" : "var(--dim)",
+          borderRadius: 999,
+          boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
+          transform: on ? "translateX(18px)" : "none",
+          transition: "transform var(--dur) var(--ease), background var(--dur) var(--ease)",
         }} />
       </span>
-      <span style={{
-        fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
-        letterSpacing: "var(--tracking-machine)", color: "var(--scale)",
-        width: 28, textAlign: "left",
-      }}>{on ? "ON" : "OFF"}</span>
     </button>
   );
 }

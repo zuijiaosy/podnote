@@ -9,7 +9,7 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
     <div
       onClick={onClose}
       style={{
-        position: "absolute", inset: 0, background: "rgba(44,44,42,0.35)",
+        position: "absolute", inset: 0, background: "rgba(33,30,25,0.22)",
         display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10,
         animation: "pn-fade var(--dur) var(--ease) both",
       }}
@@ -17,17 +17,22 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 480, background: "var(--panel)", border: "1px solid var(--line-soft)",
+          width: 440, background: "var(--paper)", border: "1px solid var(--line-faint)",
+          boxShadow: "var(--shadow-pop)",
           borderRadius: "var(--radius)", padding: 24, boxSizing: "border-box",
           display: "flex", flexDirection: "column", gap: 16,
           animation: "pn-enter var(--dur-slow) var(--ease) both",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <StatusLabel>添加剧集{act === "run" ? " · 处理中" : ""}</StatusLabel>
-          {act === "error" && <StatusLabel tone="signal">· 失败</StatusLabel>}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span style={{
+            fontFamily: "var(--font-serif)", fontSize: "var(--text-lg)",
+            fontWeight: "var(--weight-display)", letterSpacing: "var(--tracking-display)",
+            color: "var(--ink)",
+          }}>添加剧集</span>
+          {act === "error" && <StatusLabel tone="signal">失败</StatusLabel>}
           <span style={{ flex: 1 }} />
-          <Button variant="ghost" size="sm" onClick={onClose}>关闭</Button>
+          <Button variant="ghost" size="sm" onClick={onClose} style={{ alignSelf: "center" }}>关闭</Button>
         </div>
 
         {act === "input" && (
@@ -46,8 +51,7 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
             />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 16, marginTop: 8 }}>
               <span style={{
-                fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
-                letterSpacing: "var(--tracking-machine)", color: "var(--scale)",
+                fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--scale)",
               }}>链接直传云端转写</span>
               <Button variant="knob" size="md" onClick={onStart} aria-label="开始处理">开始</Button>
             </div>
@@ -56,25 +60,32 @@ export function AddFlow({ act = "input", stages = [], errMessage, url, onUrlChan
 
         {act === "run" && (
           <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "8px 0" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "4px 0 8px" }}>
               {stages.map((st) => (
-                <div key={st.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div key={st.label} style={{
+                  display: "grid", gridTemplateColumns: "1fr 160px", columnGap: 12, alignItems: "center",
+                }}>
                   <IndicatorLight status={st.status} label={st.label} />
-                  <span style={{ flex: 1 }} />
                   <span style={{
-                    fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
+                    fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
                     letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
-                    color: "var(--scale)",
+                    color: "var(--scale)", textAlign: "right",
                   }}>{st.meta || ""}</span>
                 </div>
               ))}
             </div>
-            <div style={{ display: "flex", alignItems: "center" }}>
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--scale)" }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 12,
+              borderTop: "1px solid var(--line-faint)", paddingTop: 14,
+            }}>
+              <span style={{
+                fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--scale)",
+                lineHeight: 1.5, maxWidth: 280,
+              }}>
                 音频链接直传云端转写,本地不留音频副本。
               </span>
               <span style={{ flex: 1 }} />
-              <Button variant="ghost" size="sm" onClick={onClose}>后台处理</Button>
+              <Button variant="ghost" size="sm" onClick={onClose} style={{ flex: "none" }}>后台处理</Button>
             </div>
           </>
         )}
