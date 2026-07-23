@@ -109,10 +109,13 @@ cd app && npm run build
 
 ## 已知边界
 
-- 小宇宙页面解析没有官方 API,页面改版需要跟修(`pipeline/resolve.rs`)
 - fun-asr 说话人分离官方建议音频 ≤2 小时
 - Windows 版为 beta:通知、Explorer 定位、音频解码、波形提取尚未经大规模真机验证
 
 ## License
 
 [MIT](LICENSE)
+
+## 友情链接
+
+- [LINUX DO - 新的理想型社区](https://linux.do/)
