@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "0.2.0"
 description = "Podnote — 本地单机的播客笔记仪器"
 authors = ["Podnote contributors"]
 edition = "2021"
