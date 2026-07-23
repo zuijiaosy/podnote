@@ -117,6 +117,51 @@ async function simulatePipeline(id) {
   pipeEmit(id, "READY", "ready");
 }
 
+/** 模拟本地录音管线:入库 → 上传 → 转写 → 会议纪要(带 decisions/actions,自测新区块) */
+async function simulateFilePipeline(id, title) {
+  const upd = (patch) => { records = records.map((r) => (r.id === id ? { ...r, ...patch } : r)); };
+  upd({ status: "resolving" });
+  pipeEmit(id, "RESOLVE", "processing");
+  await sleep(500);
+  pipeEmit(id, "RESOLVE", "ready", title);
+  upd({ status: "transcribing" });
+  pipeEmit(id, "TRANSCRIBE", "processing", "上传音频");
+  await sleep(900);
+  for (let s = 1; s <= 2; s++) {
+    pipeEmit(id, "TRANSCRIBE", "processing", `00:0${s * 2}`);
+    await sleep(600);
+  }
+  pipeEmit(id, "TRANSCRIBE", "ready", "00:06");
+  upd({ status: "summarizing", durationSec: 3125 });
+  pipeEmit(id, "SUMMARIZE", "processing", "800 字");
+  await sleep(900);
+  pipeEmit(id, "SUMMARIZE", "ready");
+  notes[id] = {
+    meta: { url: `/mock/${title}.m4a`, podcast: "会议", title, durationSec: 3125 },
+    note: {
+      // 深拷贝:m1/m6-m8 直接引用 ep125,浅拷贝会让纠错原地改动污染其他记录
+      ...structuredClone(ep125.note),
+      tldr: "定了下周三发 0.2 版:张三打包、李四回归,预算议题下次再议。",
+      decisions: ["0.2 版下周三(07-22)发布,走灰度", "转写服务续用百炼,暂不比价"],
+      actions: [
+        { who: "张三", what: "打包 0.2 版并提交公证", due: "下周三" },
+        { who: "李四", what: "跑完全量回归测试", due: null },
+        { who: "发言人3", what: "整理预算草案发群里", due: "本周五" },
+      ],
+      questions: ["预算上限没有结论,等财务口径", "Windows 签名证书要不要今年买"],
+    },
+  };
+  upd({ status: "ready" });
+  pipeEmit(id, "READY", "ready");
+}
+
+/** 重试/重生成走回对应来源的管线:会议记录重跑不能被换成播客笔记 */
+function rerunPipeline(id) {
+  const r = records.find((x) => x.id === id);
+  if (r?.source === "file") simulateFilePipeline(id, r.title);
+  else simulatePipeline(id);
+}
+
 export const mockApi = {
   getLibrary: async () => records,
   getNote: async (id) => notes[id] ?? null,
@@ -128,14 +173,29 @@ export const mockApi = {
       throw "这不是有效的小宇宙单集链接";
     }
     const id = `mock-${++seq}`;
-    const rec = { id, url, show: "", title: url, date: "", durationSec: 0, status: "queued", readAt: null };
+    const rec = { id, url, show: "", title: url, date: "", durationSec: 0, source: "podcast", status: "queued", readAt: null };
     records = [rec, ...records];
     simulatePipeline(id);
     return rec;
   },
-  retry: async (id) => { simulatePipeline(id); },
-  regenerate: async (id) => { delete ttsStore[id]; simulatePipeline(id); },
-  regenerateTranscript: async (id) => { delete ttsStore[id]; simulatePipeline(id); },
+  addFileEpisode: async (path, title, _context) => {
+    const name = String(path).split("/").pop() ?? "录音";
+    const t = (title ?? "").trim() || name.replace(/\.[^.]+$/, "");
+    const id = `mock-f${++seq}`;
+    const rec = { id, url: path, show: "会议", title: t, date: "07-17", durationSec: 0, source: "file", status: "queued", readAt: null };
+    records = [rec, ...records];
+    simulateFilePipeline(id, t);
+    return rec;
+  },
+  probeMediaFile: async (path) => {
+    if (!/\.(m4a|mp3|wav|aac|flac|ogg|opus|amr|wma)$/i.test(path)) {
+      throw "不支持的音频格式(支持 m4a / mp3 / wav / aac / flac / ogg / opus / amr / wma)";
+    }
+    return { fileName: String(path).split("/").pop(), sizeBytes: 48_500_000 };
+  },
+  retry: async (id) => { rerunPipeline(id); },
+  regenerate: async (id) => { delete ttsStore[id]; rerunPipeline(id); },
+  regenerateTranscript: async (id) => { delete ttsStore[id]; rerunPipeline(id); },
   deleteEpisode: async (id) => { records = records.filter((r) => r.id !== id); },
   setRead: async (id, read) => {
     records = records.map((r) => (r.id === id ? { ...r, readAt: read ? 1752000000 : null } : r));
@@ -262,6 +322,8 @@ export const mockApi = {
     note.quotes.forEach((q) => { q.text = rep(q.text); });
     note.resources.forEach((r) => { r.name = rep(r.name); r.note = rep(r.note); });
     note.questions = note.questions.map(rep);
+    if (note.decisions) note.decisions = note.decisions.map(rep);
+    note.actions?.forEach((a) => { a.who = rep(a.who); a.what = rep(a.what); });
     (correctionsStore[id] ??= []).push({ original, corrected, evidenceUrl: evidenceUrl ?? null, confidence, ts: Math.floor(Date.now() / 1000) });
     delete ttsStore[id]; // 笔记变了,旧朗读作废
     return n;

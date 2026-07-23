@@ -37,10 +37,12 @@ cd app && npm run tauri build
 
 ### Rust 后端(app/src-tauri/src/)
 - `commands.rs` — 全部 Tauri 命令 + 管线运行器 + 事件发射;新命令要在 `lib.rs` 的 `generate_handler!` 注册
-- `pipeline/` — resolve(解析小宇宙页)、asr(百炼转写)、vocab(热词表)、summarize(笔记生成)、note(JSON 解析)、llm(三协议流式客户端:OpenAI Responses / Chat Completions / Anthropic Messages)、tts(朗读合成)、correct + agent + tavily(纠错与查证)、glossary(频道词表)
+- `pipeline/` — resolve(解析小宇宙页)、asr(百炼转写)、upload(本地录音临时上传:getPolicy → OSS 表单直传 → oss:// 地址,48h 自动删)、vocab(热词表)、summarize(笔记生成)、note(JSON 解析)、llm(三协议流式客户端:OpenAI Responses / Chat Completions / Anthropic Messages)、tts(朗读合成)、correct + agent + tavily(纠错与查证)、glossary(频道词表)
 - `library.rs` / `subscriptions.rs` — 单集库与订阅存储(app 数据目录下 JSON 文件)
 
 管线阶段:`RESOLVE → TRANSCRIBE → SUMMARIZE → READY`,进度经 `pipeline-progress` 事件推给前端(AddFlow 五灯与磁带架同源消费)。事件与阶段 key 保持英文,UI 文案一律中文(映射在 `backend.js` 的 `STAGE_ZH`)。
+
+单集有两种来源(`EpisodeRecord.source`):`podcast`(小宇宙链接,音频 CDN 直传不落地)与 `file`(本地录音,会议等;`add_file_episode` 以文件内容指纹当 id 去重,复制入库自包含,上传只进用户自己的百炼账号)。会议的「背景信息」走 `meta.shownotes` 通道,一份文本同时喂热词提取、纪要 prompt 与说话人映射;`show` 固定为「会议」,频道词表按它沉淀。
 
 ### 三层专有名词纠错(本项目的差异化)
 1. shownotes 提取实体 → 频道词表(glossary,人工纠正沉淀)
@@ -48,7 +50,7 @@ cd app && npm run tauri build
 3. 事后查证:划词右键「核实」/ 块级核查 agent(Tavily 搜索),`apply_correction` 全文替换笔记+字幕并沉淀词表
 
 ### Prompt 管理
-`prompts/*.md` 是唯一真源,经 `include_str!` **编译期内嵌**——改 prompt 必须重新编译 Rust 才生效。语言规则:无论节目什么语言,笔记一律中文;专有名词保留原文不翻译。`entities.md` 是例外(热词保持原文写法,别给它加翻译规则)。
+`prompts/*.md` 是唯一真源,经 `include_str!` **编译期内嵌**——改 prompt 必须重新编译 Rust 才生效。语言规则:无论节目什么语言,笔记一律中文;专有名词保留原文不翻译。`entities.md` 是例外(热词保持原文写法,别给它加翻译规则)。`note.md` 管播客、`meeting.md` 管会议录音(按 `source` 选,产出多 `decisions`/`actions` 两个字段,播客笔记恒为空数组,前端与 markdown 只在非空时渲染)。
 
 ### 密钥与设置
 - 密钥存 app 数据目录 `keys.json` 明文(取舍:无签名证书时钥匙串每次打包都重复弹窗),启动读一次进内存,运行期零钥匙串访问

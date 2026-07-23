@@ -10,4 +10,5 @@ pub mod resolve;
 pub mod summarize;
 pub mod tavily;
 pub mod tts;
+pub mod upload;
 pub mod vocab;

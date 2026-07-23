@@ -321,9 +321,17 @@ async fn main() -> Result<()> {
 
     println!("== 3/3 生成笔记 ==");
     let timed = asr::to_timed_text(&asr_result);
-    let n = match summarize::summarize(&client, &llm, &meta, &timed, "", &|chars| {
-        print!("\r[llm] {chars} chars   ");
-    })
+    let n = match summarize::summarize(
+        &client,
+        &llm,
+        summarize::Kind::Podcast,
+        &meta,
+        &timed,
+        "",
+        &|chars| {
+            print!("\r[llm] {chars} chars   ");
+        },
+    )
     .await
     {
         Ok(n) => n,

@@ -19,6 +19,9 @@ pub struct EpisodeRecord {
     pub date: String,
     #[serde(default)]
     pub duration_sec: u64,
+    /// 来源:podcast(小宇宙链接)| file(本地录音);旧数据缺省视为 podcast
+    #[serde(default = "default_source")]
+    pub source: String,
     /// queued | resolving | transcribing | summarizing | ready | error
     pub status: String,
     #[serde(default)]
@@ -28,6 +31,10 @@ pub struct EpisodeRecord {
     /// 消费状态(与管线状态正交):归档时刻的 epoch 秒;None = 未读
     #[serde(default)]
     pub read_at: Option<u64>,
+}
+
+fn default_source() -> String {
+    "podcast".into()
 }
 
 pub struct Library {
@@ -197,6 +204,7 @@ mod tests {
             title: "T".into(),
             date: "07-10".into(),
             duration_sec: 100,
+            source: "podcast".into(),
             status: "queued".into(),
             err_stage: None,
             err_message: None,

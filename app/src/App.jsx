@@ -26,6 +26,10 @@ function LiveApp() {
   const [addAct, setAddAct] = useState("input");
   const [addUrl, setAddUrl] = useState("");
   const [addErr, setAddErr] = useState("");
+  const [addSource, setAddSource] = useState("url"); // url = 小宇宙链接 | file = 本地录音
+  const [addFile, setAddFile] = useState(null); // {path, fileName, sizeBytes}
+  const [addTitle, setAddTitle] = useState("");
+  const [addContext, setAddContext] = useState(""); // 会议背景信息:热词与纪要共用
   const addingIdRef = useRef(null);
   const [playFrac, setPlayFrac] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -91,6 +95,11 @@ function LiveApp() {
             setAdding(false);
             setActiveId(p.id);
             addingIdRef.current = null;
+            // 本次添加已完成:清空录音表单,下次打开不残留上一场会议的文件与背景
+            setAddFile(null);
+            setAddTitle("");
+            setAddContext("");
+            setAddUrl("");
           }
         }
         if (p.status === "error" && addingIdRef.current === p.id) {
@@ -120,6 +129,7 @@ function LiveApp() {
         return {
           id: r.id,
           show: r.show || "小宇宙",
+          source: r.source ?? "podcast",
           title: r.title,
           date: r.date,
           durationSec,
@@ -412,21 +422,95 @@ function LiveApp() {
 
   const addStages = useMemo(() => {
     const st = stageMap[addingIdRef.current] ?? {};
+    // 本地录音的 RESOLVE 不是解析网页而是复制入库,灯牌换字(事件 key 保持英文)
+    const zh = addSource === "file" ? { ...STAGE_ZH, RESOLVE: "入库" } : STAGE_ZH;
     return STAGE_ORDER.map((s) => ({
-      label: STAGE_ZH[s] ?? s,
+      label: zh[s] ?? s,
       status: st[s]?.status === "processing" ? "processing"
         : st[s]?.status === "ready" ? "ready"
         : st[s]?.status === "error" ? "error" : "off",
       meta: st[s]?.detail || "",
     }));
-  }, [stageMap, adding, addAct]);
+  }, [stageMap, adding, addAct, addSource]);
+
+  /** 选中的录音文件就位(选择器与拖放共用):标题默认取文件名 */
+  const applyPickedFile = useCallback((f) => {
+    setAddFile(f);
+    setAddTitle((t) => t || f.fileName.replace(/\.[^.]+$/, ""));
+  }, []);
+
+  /** 选择本地录音:Tauri 走原生对话框;mock 模式给假文件自测 */
+  const pickAddFile = async () => {
+    if (!inTauri) {
+      applyPickedFile({ path: "/mock/周会录音.m4a", fileName: "周会录音.m4a", sizeBytes: 48_500_000 });
+      return;
+    }
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const p = await open({
+      filters: [{ name: "音频", extensions: ["m4a", "mp3", "wav", "aac", "flac", "ogg", "opus", "amr", "wma"] }],
+    });
+    if (!p) return;
+    try {
+      applyPickedFile({ path: p, ...(await api.probeMediaFile(p)) });
+    } catch (e) {
+      setAddErr(String(e));
+      setAddAct("error");
+    }
+  };
+
+  // 拖放音频文件到窗口任意处 = 直接打开「添加录音」并就位(会议场景最顺手的路径)
+  const openAddWithFile = useCallback((f) => {
+    applyPickedFile(f);
+    setAddSource("file");
+    setAddErr("");
+    setAddAct("input");
+    setAdding(true);
+  }, [applyPickedFile]);
+  const openAddWithFileRef = useRef(openAddWithFile);
+  useEffect(() => { openAddWithFileRef.current = openAddWithFile; });
+  useEffect(() => {
+    if (!inTauri) return;
+    let un;
+    import("@tauri-apps/api/webview")
+      .then(({ getCurrentWebview }) =>
+        getCurrentWebview().onDragDropEvent(async (e) => {
+          if (e.payload.type !== "drop") return;
+          const p = (e.payload.paths ?? [])[0];
+          if (!p) return;
+          try {
+            openAddWithFileRef.current({ path: p, ...(await api.probeMediaFile(p)) });
+          } catch { /* 非音频文件拖入:忽略 */ }
+        })
+      )
+      .then((u) => (un = u));
+    return () => un?.();
+  }, []);
+  useEffect(() => {
+    if (inTauri || !mockMode) return; // mock 自测:浏览器拖文件进来走同一条路
+    const over = (e) => e.preventDefault();
+    const drop = (e) => {
+      e.preventDefault();
+      const f = e.dataTransfer?.files?.[0];
+      if (!f) return;
+      openAddWithFileRef.current({ path: f.name, fileName: f.name, sizeBytes: f.size });
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => { window.removeEventListener("dragover", over); window.removeEventListener("drop", drop); };
+  }, []);
 
   const startAdd = async () => {
-    const url = addUrl.trim();
-    if (!url) return;
     try {
       setStageMap((m) => ({ ...m })); // 新任务旧灯清空由事件覆盖
-      const rec = await api.addEpisode(url);
+      let rec;
+      if (addSource === "file") {
+        if (!addFile) return;
+        rec = await api.addFileEpisode(addFile.path, addTitle.trim(), addContext.trim());
+      } else {
+        const url = addUrl.trim();
+        if (!url) return;
+        rec = await api.addEpisode(url);
+      }
       addingIdRef.current = rec.id;
       setStageMap((m) => ({ ...m, [rec.id]: {} }));
       setAddAct("run");
@@ -663,6 +747,11 @@ function LiveApp() {
       {adding && (
         <AddFlow
           act={addAct} stages={addStages} url={addUrl} errMessage={addErr}
+          source={addSource}
+          onSourceChange={(s) => { setAddSource(s); setAddErr(""); }}
+          file={addFile} onPickFile={pickAddFile}
+          title={addTitle} onTitleChange={setAddTitle}
+          context={addContext} onContextChange={setAddContext}
           onUrlChange={setAddUrl}
           onStart={startAdd}
           onEditUrl={() => setAddAct("input")}

@@ -15,6 +15,21 @@ pub struct Note {
     pub quotes: Vec<Quote>,
     pub resources: Vec<Resource>,
     pub questions: Vec<String>,
+    /// 会议专用(prompts/meeting.md 产出):定下来的事;播客笔记恒为空,前端只在非空时渲染
+    #[serde(default)]
+    pub decisions: Vec<String>,
+    /// 会议专用:行动项(谁、做什么、什么时候)
+    #[serde(default)]
+    pub actions: Vec<ActionItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionItem {
+    pub who: String,
+    pub what: String,
+    /// 会上明确提到的期限原话(如"下周三");没提就是 None,禁止编造
+    #[serde(default)]
+    pub due: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +113,27 @@ pub fn note_to_markdown_opts(meta: &EpisodeMeta, note: &Note, wikilinks: bool) -
     l.push(String::new());
     l.push(format!("> {}", note.tldr));
     l.push(String::new());
+    if !note.decisions.is_empty() {
+        l.push("## 定下来的事".into());
+        l.push(String::new());
+        for d in &note.decisions {
+            l.push(format!("- {d}"));
+        }
+        l.push(String::new());
+    }
+    if !note.actions.is_empty() {
+        l.push("## 行动项".into());
+        l.push(String::new());
+        for a in &note.actions {
+            let due = a
+                .due
+                .as_deref()
+                .map(|d| format!("({d})"))
+                .unwrap_or_default();
+            l.push(format!("- [ ] {}: {}{}", a.who, a.what, due));
+        }
+        l.push(String::new());
+    }
     l.push("## 核心观点".into());
     l.push(String::new());
     for p in &note.points {
@@ -156,7 +192,10 @@ pub fn note_to_markdown_opts(meta: &EpisodeMeta, note: &Note, wikilinks: bool) -
     l.push(String::new());
     l.push("---".into());
     l.push(format!("节目: {}", meta.podcast));
-    l.push(format!("原始链接: {}", meta.url));
+    // 本地录音的 url 是机器上的绝对路径,进分享出去的 markdown 会泄露目录结构,只写网络链接
+    if meta.url.starts_with("http") {
+        l.push(format!("原始链接: {}", meta.url));
+    }
     let mut out = l.join("\n");
     out.push('\n');
     out
@@ -215,6 +254,13 @@ pub fn replace_term(note: &mut Note, original: &str, corrected: &str) -> usize {
     }
     for q in &mut note.questions {
         apply(q);
+    }
+    for d in &mut note.decisions {
+        apply(d);
+    }
+    for a in &mut note.actions {
+        apply(&mut a.who);
+        apply(&mut a.what);
     }
     for v in note.speakers.values_mut() {
         apply(v);
@@ -314,14 +360,55 @@ mod tests {
                 note: "无关".into(),
             }],
             questions: vec!["面筋是谁?".into()],
+            decisions: vec!["面筋下期继续".into()],
+            actions: vec![ActionItem {
+                who: "面筋".into(),
+                what: "剪辑下期".into(),
+                due: None,
+            }],
         };
         let n = replace_term(&mut note, "面筋", "面基");
-        assert_eq!(n, 8);
+        assert_eq!(n, 10);
+        assert_eq!(note.decisions[0], "面基下期继续");
+        assert_eq!(note.actions[0].who, "面基");
         assert_eq!(note.tldr, "面基这期讲面基");
         assert_eq!(note.speakers["S1"], "面基");
         assert_eq!(note.resources[0].name, "面基日谈");
         // 幂等:再跑一遍不再命中
         assert_eq!(replace_term(&mut note, "面筋", "面基"), 0);
+    }
+
+    #[test]
+    fn parses_without_meeting_fields_and_renders_them_when_present() {
+        // 播客笔记没有 decisions/actions:默认空,markdown 不出现会议区块
+        let note =
+            parse_note(r#"{"tldr":"t","points":[],"quotes":[],"resources":[],"questions":[]}"#)
+                .unwrap();
+        assert!(note.decisions.is_empty() && note.actions.is_empty());
+        let meta = EpisodeMeta {
+            url: "file:///r.m4a".into(),
+            audio_url: String::new(),
+            title: "周会".into(),
+            podcast: "会议".into(),
+            shownotes: String::new(),
+            duration: None,
+            pub_date: None,
+        };
+        let md = note_to_markdown(&meta, &note);
+        assert!(!md.contains("定下来的事") && !md.contains("行动项"));
+
+        // 会议笔记带 decisions/actions:渲染在 tldr 之后、核心观点之前
+        let note = parse_note(
+            r#"{"tldr":"t","points":[],"quotes":[],"resources":[],"questions":[],
+                "decisions":["下周三发版"],
+                "actions":[{"who":"张三","what":"打包","due":"下周三"},{"who":"李四","what":"回归测试"}]}"#,
+        )
+        .unwrap();
+        let md = note_to_markdown(&meta, &note);
+        assert!(md.contains("## 定下来的事\n\n- 下周三发版"));
+        assert!(md.contains("- [ ] 张三: 打包(下周三)"));
+        assert!(md.contains("- [ ] 李四: 回归测试\n"));
+        assert!(md.find("行动项").unwrap() < md.find("核心观点").unwrap());
     }
 
     #[test]

@@ -131,7 +131,8 @@ fn frontmatter(meta: &EpisodeMeta) -> String {
     if let Some(d) = pub_date_ymd(meta) {
         l.push(format!("date: {d}"));
     }
-    if !meta.url.is_empty() {
+    // 本地录音的 url 是机器上的绝对路径,不进会被同步/分享的 frontmatter
+    if meta.url.starts_with("http") {
         l.push(format!("source: {}", yaml_str(&meta.url)));
     }
     if let Some(sec) = meta.duration {

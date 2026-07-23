@@ -26,10 +26,15 @@ pub async fn transcribe(
     if let Some(vid) = vocabulary_id {
         parameters["vocabulary_id"] = json!(vid);
     }
-    let submitted: Value = client
+    let mut req = client
         .post(format!("{host}/api/v1/services/audio/asr/transcription"))
         .bearer_auth(key)
-        .header("X-DashScope-Async", "enable")
+        .header("X-DashScope-Async", "enable");
+    // oss:// = 临时上传的本地录音(upload.rs),需要这个头让服务端解析私有地址
+    if audio_url.starts_with("oss://") {
+        req = req.header("X-DashScope-OssResourceResolve", "enable");
+    }
+    let submitted: Value = req
         .json(&json!({
             "model": "fun-asr",
             "input": { "file_urls": [audio_url] },

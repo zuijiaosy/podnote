@@ -13,6 +13,11 @@ export function DemoApp() {
   const [adding, setAdding] = useState(false);
   const [addAct, setAddAct] = useState("input");
   const [addUrl, setAddUrl] = useState("");
+  // 本地录音 Tab 的评审用假数据(与 LiveApp 同一套 props 形状)
+  const [addSource, setAddSource] = useState("url");
+  const [addFile, setAddFile] = useState(null);
+  const [addTitle, setAddTitle] = useState("");
+  const [addContext, setAddContext] = useState("");
   const [playFrac, setPlayFrac] = useState(0.32);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -82,6 +87,14 @@ export function DemoApp() {
       {adding && (
         <AddFlow
           act={addAct} stages={demoStages} url={addUrl}
+          source={addSource} onSourceChange={setAddSource}
+          file={addFile}
+          onPickFile={() => {
+            setAddFile({ path: "/demo/周会录音.m4a", fileName: "周会录音.m4a", sizeBytes: 48_500_000 });
+            setAddTitle((t) => t || "周会录音");
+          }}
+          title={addTitle} onTitleChange={setAddTitle}
+          context={addContext} onContextChange={setAddContext}
           onUrlChange={setAddUrl}
           onStart={() => setAddAct("run")}
           onEditUrl={() => setAddAct("input")}

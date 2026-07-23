@@ -12,7 +12,7 @@ use tauri_plugin_notification::NotificationExt;
 use crate::export;
 use crate::library::{ensure_dir, episode_id, short_date, EpisodeRecord, Library};
 use crate::pipeline::{
-    agent, asr, correct, glossary, llm, note, resolve, summarize, tavily, tts, vocab,
+    agent, asr, correct, glossary, llm, note, resolve, summarize, tavily, tts, upload, vocab,
 };
 use crate::subscriptions::{pick_new, SubStore, Subscription};
 
@@ -567,6 +567,10 @@ pub async fn download_audio(app: AppHandle, id: String) -> Result<String, String
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .ok_or("找不到剧集元信息,请先重试解析")?;
+    // 本地录音的 audio_url 是库内路径,不可下载;副本在才会走不到这里
+    if !meta.audio_url.starts_with("http") {
+        return Err("本地录音的音频副本不见了,请删除这条后重新添加".into());
+    }
 
     let ext = meta
         .audio_url
@@ -632,6 +636,7 @@ pub fn add_episode(
         title: url.clone(), // 解析前先用链接占位
         date: String::new(),
         duration_sec: 0,
+        source: "podcast".into(),
         status: "queued".into(),
         err_stage: None,
         err_message: None,
@@ -643,6 +648,162 @@ pub fn add_episode(
         .unwrap()
         .upsert(rec.clone())
         .map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn(run_pipeline(app, id, false));
+    Ok(rec)
+}
+
+// ===== 本地录音(会议等):文件 → 复制入库 → 临时上传自己的百炼账号 → 转写 → 会议纪要 =====
+
+/// fun-asr 支持且适合会议录音的格式;文件选择器与拖放共用这份白名单
+pub const AUDIO_EXTS: &[&str] = &[
+    "m4a", "mp3", "wav", "aac", "flac", "ogg", "opus", "amr", "wma",
+];
+
+fn audio_ext_of(path: &std::path::Path) -> Option<String> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    AUDIO_EXTS.contains(&ext.as_str()).then_some(ext)
+}
+
+/// 入库副本的扩展名:不全信原文件名——微信/安卓会把 3gp/m4a 容器导出成 .aac,
+/// 而播放端(CoreAudio/WKWebView)按扩展名选解析器,名不副实就播不出声;
+/// 嗅到 ISO-BMFF 容器(offset 4 处 "ftyp")一律按 m4a 存,转写端按内容识别不受影响
+fn stored_audio_ext(path: &std::path::Path, claimed: String) -> String {
+    use std::io::Read;
+    let mut head = [0u8; 8];
+    match fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)) {
+        Ok(()) if &head[4..8] == b"ftyp" => "m4a".into(),
+        _ => claimed,
+    }
+}
+
+/// 流式 fnv1a-64(与 export::fnv1a 同算法):录音可达 GB 级,不整读进内存
+fn fnv1a_file(path: &std::path::Path) -> Result<String, String> {
+    use std::io::Read;
+    let mut f = fs::File::open(path).map_err(|e| format!("打不开文件: {e}"))?;
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = f.read(&mut buf).map_err(|e| format!("读取文件失败: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        for b in &buf[..n] {
+            h ^= u64::from(*b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    Ok(format!("{h:016x}"))
+}
+
+/// epoch 秒 → (年, 月, 日),UTC;录音文件的修改时间当录制日期用(civil-from-days 算法)
+fn civil_date(secs: u64) -> (i64, u32, u32) {
+    let z = (secs / 86400) as i64 + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32;
+    (yoe as i64 + era * 400 + i64::from(m <= 2), m, d)
+}
+
+/// 选中文件后的预检回执(文件名/大小):花钱前把要传什么讲清楚
+#[tauri::command]
+pub fn probe_media_file(path: String) -> Result<serde_json::Value, String> {
+    let p = std::path::Path::new(&path);
+    audio_ext_of(p)
+        .ok_or("不支持的音频格式(支持 m4a / mp3 / wav / aac / flac / ogg / opus / amr / wma)")?;
+    let md = fs::metadata(p).map_err(|_| "读不到这个文件")?;
+    if !md.is_file() {
+        return Err("这不是一个文件".into());
+    }
+    Ok(serde_json::json!({
+        "fileName": p.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(),
+        "sizeBytes": md.len(),
+    }))
+}
+
+/// 添加本地录音:内容指纹当 id(同一份录音重复添加命中同一条,不重复花钱);
+/// meta 先落盘(会议没有网页可解析),复制入库与上传在管线里做
+#[tauri::command]
+pub async fn add_file_episode(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    title: String,
+    context: String,
+) -> Result<EpisodeRecord, String> {
+    let src = std::path::PathBuf::from(&path);
+    let ext = audio_ext_of(&src)
+        .ok_or("不支持的音频格式(支持 m4a / mp3 / wav / aac / flac / ogg / opus / amr / wma)")?;
+    let ext = stored_audio_ext(&src, ext);
+    let md = fs::metadata(&src).map_err(|_| "读不到这个文件")?;
+    if !md.is_file() {
+        return Err("这不是一个文件".into());
+    }
+    let src_hash = src.clone();
+    let hash = tauri::async_runtime::spawn_blocking(move || fnv1a_file(&src_hash))
+        .await
+        .map_err(|e| e.to_string())??;
+    let id = format!("f{hash}");
+
+    let mtime = md
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d) = civil_date(mtime);
+    let title = {
+        let t = title.trim();
+        if t.is_empty() {
+            src.file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "未命名录音".into())
+        } else {
+            t.to_string()
+        }
+    };
+    let rec = EpisodeRecord {
+        id: id.clone(),
+        url: path.clone(), // 原始文件路径(库内副本在 audio/<id>.<ext>)
+        show: "会议".into(),
+        title: title.clone(),
+        date: format!("{mo:02}-{d:02}"),
+        duration_sec: 0, // 本地不解码,转写完成后由末句时间回填
+        source: "file".into(),
+        status: "queued".into(),
+        err_stage: None,
+        err_message: None,
+        read_at: None,
+    };
+    {
+        let lib = state.lib.lock().unwrap();
+        // 失败的记录允许重新添加 = 重试通道(标题/背景信息可能已被改过,meta 随之覆盖);
+        // 处理中或已完成的才拦重复,避免重复花钱
+        if lib.get(&id).is_some_and(|r| r.status != "error") {
+            return Err("这份录音已经在库里(同一个文件只需添加一次)".into());
+        }
+        // 背景信息进 shownotes 通道:热词提取、纪要 prompt、说话人映射三处共用
+        let meta = resolve::EpisodeMeta {
+            url: path.clone(),
+            audio_url: lib.audio_file(&id, &ext).to_string_lossy().into_owned(),
+            title,
+            podcast: "会议".into(),
+            shownotes: context.trim().to_string(),
+            duration: None,
+            pub_date: Some(format!("{y:04}-{mo:02}-{d:02}")),
+        };
+        let meta_path = lib.root.join("meta").join(format!("{id}.json"));
+        ensure_dir(&meta_path).map_err(|e| e.to_string())?;
+        fs::write(
+            &meta_path,
+            serde_json::to_string(&meta).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        lib.upsert(rec.clone()).map_err(|e| e.to_string())?;
+    }
     tauri::async_runtime::spawn(run_pipeline(app, id, false));
     Ok(rec)
 }
@@ -1445,14 +1606,15 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
             lib.asr_path(&id),
         )
     };
-    let url = {
+    let (url, source) = {
         let state = app.state::<AppState>();
         let lib = state.lib.lock().unwrap();
         match lib.get(&id) {
-            Some(r) => r.url,
+            Some(r) => (r.url, r.source),
             None => return,
         }
     };
+    let is_file = source == "file";
     let settings = {
         let state = app.state::<AppState>();
         let lib = state.lib.lock().unwrap();
@@ -1484,10 +1646,54 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
         return;
     }
 
-    // --- RESOLVE(重新生成时用缓存的 meta) ---
+    // --- RESOLVE(重新生成时用缓存的 meta;本地录音 = 读添加时落盘的 meta + 复制入库) ---
     set_status(&app, &id, "resolving");
     emit(&app, &id, "RESOLVE", "processing", "");
-    let meta: resolve::EpisodeMeta = if force_note && meta_path.exists() {
+    let meta: resolve::EpisodeMeta = if is_file {
+        let m: resolve::EpisodeMeta = match fs::read_to_string(&meta_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+        {
+            Some(m) => m,
+            None => return fail(&app, &id, "RESOLVE", "找不到录音元信息,请删除后重新添加"),
+        };
+        // 库内副本自包含:原始文件之后被删/移走也不影响重听与重跑。
+        // 先落 tmp- 前缀临时名(find_audio 不会命中),对副本核指纹后原子改名:
+        // 复制中断不留半截文件,源文件在哈希后被改写(还在录制/被编辑)也在这里拦下
+        if !std::path::Path::new(&m.audio_url).exists() {
+            let dest = std::path::PathBuf::from(&m.audio_url);
+            // 临时名带每次运行唯一的序号:连点重试并发跑两条管线时各写各的,
+            // 不会出现一方 rename 后另一方还在往同一文件里写的情况
+            static COPY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let seq = COPY_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let tmp_name = dest
+                .file_name()
+                .map(|n| format!("tmp-{seq}-{}", n.to_string_lossy()))
+                .unwrap_or_else(|| format!("tmp-{seq}-{id}"));
+            let tmp = dest.with_file_name(tmp_name);
+            let copied: Result<(), String> = match tokio::fs::copy(&m.url, &tmp).await {
+                Err(e) => Err(format!("复制录音入库失败(原始文件还在吗?): {e}")),
+                Ok(_) => {
+                    let tmp2 = tmp.clone();
+                    match tauri::async_runtime::spawn_blocking(move || fnv1a_file(&tmp2)).await {
+                        Ok(Ok(h)) if format!("f{h}") == id => tokio::fs::rename(&tmp, &dest)
+                            .await
+                            .map_err(|e| e.to_string()),
+                        Ok(Ok(_)) => Err(
+                            "文件内容和添加时不一致(还在录制或被改动过?),请删除后重新添加".into(),
+                        ),
+                        Ok(Err(e)) => Err(e),
+                        Err(e) => Err(e.to_string()),
+                    }
+                }
+            };
+            if let Err(e) = copied {
+                let _ = tokio::fs::remove_file(&tmp).await;
+                return fail(&app, &id, "RESOLVE", &e);
+            }
+        }
+        m
+    } else if force_note && meta_path.exists() {
         match fs::read_to_string(&meta_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
@@ -1538,6 +1744,25 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
         }
     } else {
         set_status(&app, &id, "transcribing");
+        // 本地录音:临时上传到用户自己的百炼账号(48h 自动删除),换 oss:// 地址喂 fun-asr。
+        // 放在建热词表之前:上传失败提前退出时词表还没建,不会泄漏每账号 10 个的配额
+        let transcribe_url = if is_file {
+            emit(&app, &id, "TRANSCRIBE", "processing", "上传音频");
+            match upload::upload_for_transcribe(
+                &client,
+                &settings.asr_host,
+                &asr_key,
+                std::path::Path::new(&meta.audio_url),
+            )
+            .await
+            {
+                Ok(u) => u,
+                Err(e) => return fail(&app, &id, "TRANSCRIBE", &e.to_string()),
+            }
+        } else {
+            meta.audio_url.clone()
+        };
+
         // 热词:shownotes 实体(LLM 提取)+ 频道纠正词 → 临时词表;任何失败降级为无热词转写
         emit(&app, &id, "TRANSCRIBE", "processing", "准备热词");
         let terms = {
@@ -1566,7 +1791,7 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
             &client,
             &settings.asr_host,
             &asr_key,
-            &meta.audio_url,
+            &transcribe_url,
             vocab_id.as_deref(),
             &progress,
         )
@@ -1584,6 +1809,25 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
             Err(e) => return fail(&app, &id, "TRANSCRIBE", &e.to_string()),
         }
     };
+
+    // 本地录音不在本地解码时长:转写完成后用末句 end_time 回填(磁带时长读数与波形锚点都靠它)
+    let mut meta = meta;
+    if is_file && meta.duration.is_none() {
+        let end_ms = asr_result
+            .pointer("/transcripts/0/sentences")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.last())
+            .and_then(|s| s.get("end_time"))
+            .and_then(|v| v.as_u64());
+        if let Some(ms) = end_ms {
+            meta.duration = Some(ms.div_ceil(1000));
+            let _ = fs::write(&meta_path, serde_json::to_string(&meta).unwrap_or_default());
+            let state = app.state::<AppState>();
+            let lib = state.lib.lock().unwrap();
+            let _ = lib.update(&id, |r| r.duration_sec = meta.duration.unwrap_or(0));
+        }
+    }
+    let meta = meta;
 
     // --- SUMMARIZE ---
     set_status(&app, &id, "summarizing");
@@ -1607,19 +1851,33 @@ async fn run_pipeline(app: AppHandle, id: String, force_note: bool) {
             &format!("{chars} 字"),
         );
     };
-    let parsed =
-        match summarize::summarize(&client, &llm, &meta, &timed, &glossary_text, &progress).await {
-            Ok(n) => n,
-            Err(e) => {
-                // 解析失败把原始输出落盘,便于调 prompt
-                if let Some(raw) = note::raw_of(&e) {
-                    let state = app.state::<AppState>();
-                    let lib = state.lib.lock().unwrap();
-                    let _ = fs::write(lib.root.join("notes").join(format!("{id}.raw.txt")), raw);
-                }
-                return fail(&app, &id, "SUMMARIZE", &e.to_string());
+    let kind = if is_file {
+        summarize::Kind::Meeting
+    } else {
+        summarize::Kind::Podcast
+    };
+    let parsed = match summarize::summarize(
+        &client,
+        &llm,
+        kind,
+        &meta,
+        &timed,
+        &glossary_text,
+        &progress,
+    )
+    .await
+    {
+        Ok(n) => n,
+        Err(e) => {
+            // 解析失败把原始输出落盘,便于调 prompt
+            if let Some(raw) = note::raw_of(&e) {
+                let state = app.state::<AppState>();
+                let lib = state.lib.lock().unwrap();
+                let _ = fs::write(lib.root.join("notes").join(format!("{id}.raw.txt")), raw);
             }
-        };
+            return fail(&app, &id, "SUMMARIZE", &e.to_string());
+        }
+    };
 
     // 历史纠正兜底重放:glossary 已注入 prompt,LLM 若仍输出错词在此修正(幂等)
     let mut parsed = parsed;
@@ -1775,6 +2033,7 @@ async fn do_check_subscriptions(app: &AppHandle) -> Result<u32, String> {
                 title: e.title.clone(),
                 date: short_date(&e.pub_date),
                 duration_sec: e.duration.unwrap_or(0),
+                source: "podcast".into(),
                 status: "queued".into(),
                 err_stage: None,
                 err_message: None,
@@ -1831,4 +2090,48 @@ pub fn start_sub_poller(app: AppHandle) {
             tokio::time::sleep(Duration::from_secs(30 * 60)).await;
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn civil_date_matches_known_dates() {
+        assert_eq!(civil_date(0), (1970, 1, 1));
+        assert_eq!(civil_date(1_784_246_400), (2026, 7, 17)); // 2026-07-17T00:00:00Z
+        assert_eq!(civil_date(951_782_400), (2000, 2, 29)); // 闰日
+    }
+
+    #[test]
+    fn audio_ext_whitelist() {
+        use std::path::Path;
+        assert_eq!(audio_ext_of(Path::new("/a/周会.M4A")), Some("m4a".into()));
+        assert_eq!(audio_ext_of(Path::new("/a/rec.mp3")), Some("mp3".into()));
+        assert_eq!(audio_ext_of(Path::new("/a/video.mov")), None);
+        assert_eq!(audio_ext_of(Path::new("/a/无扩展名")), None);
+    }
+
+    #[test]
+    fn stored_ext_sniffs_isobmff_behind_wrong_extension() {
+        let dir = std::env::temp_dir();
+        // 微信/安卓导出的 .aac 实为 3gp 容器:offset 4 处是 "ftyp"
+        let fake_aac = dir.join(format!("pn-sniff-{}.aac", std::process::id()));
+        std::fs::write(&fake_aac, b"\x00\x00\x00\x18ftyp3gp4\x00\x00\x00\x00").unwrap();
+        assert_eq!(stored_audio_ext(&fake_aac, "aac".into()), "m4a");
+        // 真 ADTS 裸流(0xFFF1 同步字)保持原扩展名
+        let real_aac = dir.join(format!("pn-sniff2-{}.aac", std::process::id()));
+        std::fs::write(&real_aac, b"\xff\xf1\x50\x80\x01\x00\x00\x00").unwrap();
+        assert_eq!(stored_audio_ext(&real_aac, "aac".into()), "aac");
+        let _ = std::fs::remove_file(&fake_aac);
+        let _ = std::fs::remove_file(&real_aac);
+    }
+
+    #[test]
+    fn fnv1a_file_matches_inmemory_fnv1a() {
+        let p = std::env::temp_dir().join(format!("pn-fnv-{}", std::process::id()));
+        std::fs::write(&p, b"podnote").unwrap();
+        assert_eq!(fnv1a_file(&p).unwrap(), crate::export::fnv1a(b"podnote"));
+        let _ = std::fs::remove_file(&p);
+    }
 }

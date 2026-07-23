@@ -412,6 +412,12 @@ function ReaderTabs({ ep, playFrac, onSeekFrac, transcript, onLoadTranscript, tt
 
 function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm, onApplyCorrection, onStartResearch, onAskQuestion }) {
   const note = ep.note;
+  // 会议纪要专有区块(decisions/actions)只在非空时出现;区块序号随之顺延
+  const decisions = note.decisions ?? [];
+  const actions = note.actions ?? [];
+  const meeting = ep.source === "file";
+  let secNo = 0;
+  const secIdx = () => String(++secNo).padStart(2, "0");
   const mkSeek = (t) => () => onSeekFrac(t / ep.durationSec);
   const isActive = (t) => Math.abs(t / ep.durationSec - playFrac) < 0.015;
   const contRef = useRef(null);
@@ -618,7 +624,62 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
           }}>{M(note.tldr)}</span>
         </div>
 
-        <SectionHead idx="01" title="核心观点" />
+        {decisions.length > 0 && (
+          <>
+            <SectionHead idx={secIdx()} title="定下来的事" />
+            <div className="pn-card" style={{ marginTop: 12, padding: "6px 20px" }}>
+              {decisions.map((d, i) => (
+                <div key={i} style={{
+                  display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0",
+                  borderBottom: i === decisions.length - 1 ? "none" : "1px solid var(--line-faint)",
+                }}>
+                  <span style={{
+                    fontFamily: "var(--font-data)", fontSize: "var(--text-xs)",
+                    letterSpacing: "var(--tracking-machine)", color: "var(--dim)", flex: "none",
+                  }}>D{i + 1}</span>
+                  <span style={{
+                    fontFamily: "var(--font-ui)", fontSize: "var(--text-base)",
+                    fontWeight: "var(--weight-medium)", color: "var(--txt)",
+                    lineHeight: "var(--leading-note)", textWrap: "pretty",
+                  }}>{M(d)}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {actions.length > 0 && (
+          <>
+            <SectionHead idx={secIdx()} title="行动项" />
+            <div style={{ marginTop: 8 }}>
+              {actions.map((a, i) => (
+                <div key={i} style={{
+                  display: "grid", gridTemplateColumns: "minmax(72px, 120px) minmax(0, 1fr) auto",
+                  columnGap: 16, alignItems: "baseline", padding: "11px 0",
+                  borderBottom: i === actions.length - 1 ? "none" : "1px solid var(--line-faint)",
+                }}>
+                  <span style={{
+                    fontFamily: "var(--font-ui)", fontSize: "var(--text-base)",
+                    fontWeight: "var(--weight-medium)", color: "var(--txt)",
+                    overflowWrap: "anywhere", minWidth: 0,
+                  }}>{M(a.who)}</span>
+                  <span style={{
+                    fontFamily: "var(--font-ui)", fontSize: "var(--text-base)",
+                    color: "var(--txt)", lineHeight: "var(--leading-note)",
+                    overflowWrap: "anywhere", minWidth: 0,
+                  }}>{M(a.what)}</span>
+                  <span style={{
+                    fontFamily: "var(--font-data)", fontSize: "var(--text-xs)",
+                    letterSpacing: "var(--tracking-machine)", fontVariantNumeric: "tabular-nums",
+                    color: a.due ? "var(--accent)" : "var(--faint)", flex: "none",
+                  }}>{a.due || "未定期限"}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <SectionHead idx={secIdx()} title={meeting ? "议题与讨论" : "核心观点"} />
         {note.points.map((p, i) => (
           <div key={i} data-tts={`point-${i}`} data-block={`point-${i}`} style={{
             position: "relative",
@@ -646,7 +707,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
           </div>
         ))}
 
-        {note.quotes.length > 0 && <SectionHead idx="02" title="值得记住的话" />}
+        {note.quotes.length > 0 && <SectionHead idx={secIdx()} title="值得记住的话" />}
         {note.quotes.map((q, i) => (
           <div key={i} data-tts={`quote-${i}`} data-block={`quote-${i}`} style={{
             position: "relative",
@@ -674,7 +735,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
           </div>
         ))}
 
-        <SectionHead idx="03" title="提到的资源" />
+        <SectionHead idx={secIdx()} title="提到的资源" />
         <div style={{ marginTop: 8 }}>
           {note.resources.length === 0 && (
             <div style={{ padding: "12px 0", fontFamily: "var(--font-sans)", fontSize: "var(--text-base)", color: "var(--scale)" }}>无</div>
@@ -702,7 +763,7 @@ function Reader({ ep, playFrac, onSeekFrac, ttsSeg, corrections, onResearchTerm,
           ))}
         </div>
 
-        {note.questions.length > 0 && <SectionHead idx="04" title="我可能想深挖的" />}
+        {note.questions.length > 0 && <SectionHead idx={secIdx()} title={meeting ? "未决问题" : "我可能想深挖的"} />}
         {note.questions.map((q, i) => (
           <div
             key={i}

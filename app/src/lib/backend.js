@@ -31,6 +31,10 @@ const realApi = {
   getNoteMarkdown: (id) => invoke("get_note_markdown", { id }),
   getTranscript: (id) => invoke("get_transcript", { id }),
   addEpisode: (url) => invoke("add_episode", { url }),
+  /** 本地录音入库(会议等):文件路径 + 标题 + 背景信息(议程/参会人,热词与纪要共用) */
+  addFileEpisode: (path, title, context) => invoke("add_file_episode", { path, title, context }),
+  /** 选中文件预检 {fileName, sizeBytes}:花钱动作前把要传什么讲清楚 */
+  probeMediaFile: (path) => invoke("probe_media_file", { path }),
   retry: (id) => invoke("retry_episode", { id }),
   regenerate: (id) => invoke("regenerate_note", { id }),
   /** 重新转写:删缓存全量重跑,级联重新生成笔记 */

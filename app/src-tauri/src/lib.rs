@@ -35,6 +35,8 @@ pub fn run() {
             commands::get_note_markdown,
             commands::get_transcript,
             commands::add_episode,
+            commands::add_file_episode,
+            commands::probe_media_file,
             commands::retry_episode,
             commands::regenerate_note,
             commands::regenerate_transcript,
